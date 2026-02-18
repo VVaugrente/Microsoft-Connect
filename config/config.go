@@ -24,7 +24,7 @@ func Load() *Config {
 		ClientID:     getEnv("CLIENT_ID", ""),
 		ClientSecret: getEnv("CLIENT_SECRET", ""),
 		TenantID:     getEnv("TENANT_ID", ""),
-		Port:         getEnv("PORT", ""),
+		Port:         getEnv("PORT", "8080"),
 	}
 }
 
