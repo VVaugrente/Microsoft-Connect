@@ -14,6 +14,13 @@ import (
 func main() {
 	cfg := config.Load()
 
+	// Log the port explicitly
+	port := cfg.Port
+	if port == "" {
+		port = "10000" // Render's default
+	}
+	log.Printf("Starting server on port %s", port)
+
 	// Services
 	authService := services.NewAuthService(cfg)
 	graphService := services.NewGraphService(authService)
@@ -126,8 +133,10 @@ func main() {
 		api.POST("/batch", batchHandler.ExecuteBatch)
 	}
 
-	log.Printf("Server starting on port %s", cfg.Port)
-	if err := r.Run(":" + cfg.Port); err != nil {
+	// Explicitly bind to 0.0.0.0
+	addr := "0.0.0.0:" + port
+	log.Printf("Server listening on %s", addr)
+	if err := r.Run(addr); err != nil {
 		log.Fatal(err)
 	}
 }

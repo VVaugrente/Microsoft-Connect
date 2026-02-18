@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: microsoft-connector
+    runtime: go
+    buildCommand: go build -tags netgo -ldflags '-s -w' -o app ./cmd/server
+    startCommand: ./app
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: CLIENT_ID
+        sync: false
+      - key: CLIENT_SECRET
+        sync: false
+      - key: TENANT_ID
+        sync: false
+      - key: CLAUDE_API_KEY
+        sync: false
