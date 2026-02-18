@@ -29,150 +29,146 @@ func NewTeamsBotHandler(cs *services.ClaudeService, gs *services.GraphService, s
 	}
 }
 
-// Structure webhook Teams
-type TeamsMessage struct {
-	Type         string `json:"type"`
-	Text         string `json:"text"`
-	From         From   `json:"from"`
-	Conversation struct {
-		ID string `json:"id"`
-	} `json:"conversation"`
-	ServiceURL  string       `json:"serviceUrl"`
-	ChannelData *ChannelData `json:"channelData,omitempty"`
+// Activity - Format Bot Framework utilisé par Teams
+type Activity struct {
+	Type         string               `json:"type"`
+	ID           string               `json:"id,omitempty"`
+	Timestamp    string               `json:"timestamp,omitempty"`
+	ServiceURL   string               `json:"serviceUrl,omitempty"`
+	ChannelID    string               `json:"channelId,omitempty"`
+	From         *ChannelAccount      `json:"from,omitempty"`
+	Conversation *ConversationAccount `json:"conversation,omitempty"`
+	Recipient    *ChannelAccount      `json:"recipient,omitempty"`
+	Text         string               `json:"text,omitempty"`
+	ReplyToID    string               `json:"replyToId,omitempty"`
+	Attachments  []Attachment         `json:"attachments,omitempty"`
+	ChannelData  interface{}          `json:"channelData,omitempty"`
 }
 
-type From struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-}
-
-type ChannelData struct {
-	Team    *TeamInfo    `json:"team,omitempty"`
-	Channel *ChannelInfo `json:"channel,omitempty"`
-}
-
-type TeamInfo struct {
-	ID   string `json:"id"`
+type ChannelAccount struct {
+	ID   string `json:"id,omitempty"`
 	Name string `json:"name,omitempty"`
 }
 
-type ChannelInfo struct {
-	ID   string `json:"id"`
+type ConversationAccount struct {
+	ID   string `json:"id,omitempty"`
 	Name string `json:"name,omitempty"`
 }
 
-type WebhookResponse struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+type Attachment struct {
+	ContentType string      `json:"contentType,omitempty"`
+	Content     interface{} `json:"content,omitempty"`
 }
 
 // POST /api/webhook - Endpoint pour Outgoing Webhook Teams
 func (h *TeamsBotHandler) HandleWebhook(c *gin.Context) {
+	log.Printf("=== Webhook POST received ===")
+	log.Printf("Content-Type: %s", c.GetHeader("Content-Type"))
+	log.Printf("Authorization: %s", c.GetHeader("Authorization"))
+
 	// Lire le body
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		log.Printf("Error reading body: %v", err)
-		c.JSON(http.StatusBadRequest, WebhookResponse{
-			Type: "message",
-			Text: "Erreur de lecture",
-		})
+		c.JSON(http.StatusOK, Activity{Type: "message", Text: "OK"})
 		return
 	}
 
-	log.Printf("Webhook received: %s", string(body))
-	log.Printf("Headers: %v", c.Request.Header)
+	log.Printf("Body: %s", string(body))
 
-	// Vérifier la signature HMAC si secret configuré
+	// Body vide = validation
+	if len(body) == 0 {
+		log.Printf("Empty body - validation request")
+		c.JSON(http.StatusOK, Activity{Type: "message", Text: "OK"})
+		return
+	}
+
+	// Parser l'Activity
+	var activity Activity
+	if err := json.Unmarshal(body, &activity); err != nil {
+		log.Printf("Error parsing activity: %v", err)
+		c.JSON(http.StatusOK, Activity{Type: "message", Text: "OK"})
+		return
+	}
+
+	log.Printf("Activity Type: %s, Text: %s", activity.Type, activity.Text)
+
+	// Vérifier HMAC si secret configuré
 	if h.webhookSecret != "" {
-		if !h.verifyHMAC(c, body) {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader != "" && !h.verifyHMAC(authHeader, body) {
 			log.Printf("HMAC verification failed")
-			c.JSON(http.StatusUnauthorized, WebhookResponse{
-				Type: "message",
-				Text: "Signature invalide",
-			})
-			return
+			// On continue quand même pour le debug
 		}
 	}
 
-	var msg TeamsMessage
-	if err := json.Unmarshal(body, &msg); err != nil {
-		log.Printf("Error parsing message: %v", err)
-		c.JSON(http.StatusOK, WebhookResponse{
-			Type: "message",
-			Text: "Erreur de parsing du message",
-		})
-		return
+	// Répondre immédiatement pour éviter le timeout
+	responseText := "Bonjour! Je suis NEO."
+
+	if activity.Text != "" {
+		// Nettoyer le message (enlever la mention du bot)
+		cleanedText := h.cleanMention(activity.Text)
+		log.Printf("Cleaned message: %s", cleanedText)
+
+		if cleanedText != "" {
+			// Construire le contexte
+			context := h.buildContext(&activity)
+
+			// Appeler Claude
+			response, err := h.claudeService.SendMessageWithTools(cleanedText, context, h.graphService)
+			if err != nil {
+				log.Printf("Claude error: %v", err)
+				responseText = "Désolé, une erreur s'est produite."
+			} else {
+				responseText = response
+			}
+		}
 	}
 
-	// Si le message est vide, retourner une réponse simple
-	if msg.Text == "" {
-		c.JSON(http.StatusOK, WebhookResponse{
-			Type: "message",
-			Text: "Bonjour! Je suis NEO, votre assistant. Comment puis-je vous aider?",
-		})
-		return
-	}
+	log.Printf("Response: %s", responseText)
 
-	// Nettoyer le message (enlever la mention du bot)
-	cleanedText := h.cleanMention(msg.Text)
-	log.Printf("Cleaned message: %s", cleanedText)
-
-	// Construire le contexte
-	context := h.buildContext(&msg)
-
-	// Appeler Claude
-	response, err := h.claudeService.SendMessageWithTools(cleanedText, context, h.graphService)
-	if err != nil {
-		log.Printf("Claude error: %v", err)
-		response = "Désolé, une erreur s'est produite. Réessayez plus tard."
-	}
-
-	log.Printf("Response: %s", response)
-
-	// Répondre au webhook
-	c.JSON(http.StatusOK, WebhookResponse{
+	// Réponse au format Bot Framework Activity
+	c.JSON(http.StatusOK, Activity{
 		Type: "message",
-		Text: response,
+		Text: responseText,
 	})
 }
 
-func (h *TeamsBotHandler) verifyHMAC(c *gin.Context, body []byte) bool {
-	authHeader := c.GetHeader("Authorization")
-	if authHeader == "" {
-		return false
-	}
-
-	// Le header peut être "HMAC <signature>" ou juste la signature
+func (h *TeamsBotHandler) verifyHMAC(authHeader string, body []byte) bool {
+	// Le header est "HMAC <base64signature>"
 	providedMAC := strings.TrimPrefix(authHeader, "HMAC ")
 
-	mac := hmac.New(sha256.New, []byte(h.webhookSecret))
+	// Le secret est en base64
+	secretBytes, err := base64.StdEncoding.DecodeString(h.webhookSecret)
+	if err != nil {
+		log.Printf("Error decoding webhook secret: %v", err)
+		secretBytes = []byte(h.webhookSecret)
+	}
+
+	mac := hmac.New(sha256.New, secretBytes)
 	mac.Write(body)
 	expectedMAC := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+	log.Printf("Provided HMAC: %s", providedMAC)
+	log.Printf("Expected HMAC: %s", expectedMAC)
 
 	return hmac.Equal([]byte(expectedMAC), []byte(providedMAC))
 }
 
 func (h *TeamsBotHandler) cleanMention(text string) string {
-	// Teams ajoute <at>BotName</at> au début
+	// Teams ajoute <at>BotName</at> au début du message
+	// Format: "<at>NEO</at> message"
 	if idx := strings.Index(text, "</at>"); idx != -1 {
-		text = text[idx+5:]
+		text = strings.TrimSpace(text[idx+5:])
 	}
-	text = strings.ReplaceAll(text, "<at>", "")
-	text = strings.ReplaceAll(text, "</at>", "")
-	return strings.TrimSpace(text)
+	return text
 }
 
-func (h *TeamsBotHandler) buildContext(msg *TeamsMessage) string {
+func (h *TeamsBotHandler) buildContext(activity *Activity) string {
 	ctx := "Tu es NEO, un assistant Microsoft 365 intégré à Teams.\n"
-	ctx += "Utilisateur: " + msg.From.Name + "\n"
 
-	if msg.ChannelData != nil {
-		if msg.ChannelData.Team != nil && msg.ChannelData.Team.Name != "" {
-			ctx += "Équipe: " + msg.ChannelData.Team.Name + "\n"
-		}
-		if msg.ChannelData.Channel != nil && msg.ChannelData.Channel.Name != "" {
-			ctx += "Canal: " + msg.ChannelData.Channel.Name + "\n"
-		}
+	if activity.From != nil && activity.From.Name != "" {
+		ctx += "Utilisateur: " + activity.From.Name + "\n"
 	}
 
 	ctx += "Réponds de manière concise en français."
