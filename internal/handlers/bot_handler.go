@@ -192,13 +192,14 @@ func (h *BotHandler) getBotToken() (string, error) {
 	data.Set("client_secret", h.appPassword)
 	data.Set("scope", "https://api.botframework.com/.default")
 
-	// Utiliser votre tenant ID au lieu de botframework.com
 	tenantID := os.Getenv("TENANT_ID")
 	tokenURL := fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenantID)
 
 	log.Printf("=== TOKEN REQUEST ===")
 	log.Printf("URL: %s", tokenURL)
 	log.Printf("AppID: [%s]", h.appID)
+	log.Printf("AppPassword length: %d", len(h.appPassword))
+	log.Printf("TenantID: [%s]", tenantID)
 
 	resp, err := http.Post(
 		tokenURL,
@@ -206,27 +207,51 @@ func (h *BotHandler) getBotToken() (string, error) {
 		strings.NewReader(data.Encode()),
 	)
 	if err != nil {
-		log.Printf("Token request error: %v", err)
+		log.Printf("Token HTTP error: %v", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Printf("Error reading token response: %v", err)
+		return "", err
+	}
+
 	log.Printf("=== TOKEN RESPONSE ===")
 	log.Printf("Status: %d", resp.StatusCode)
+	log.Printf("Body length: %d", len(body))
 	log.Printf("Body: %s", string(body))
+
+	if len(body) == 0 {
+		return "", fmt.Errorf("empty token response")
+	}
 
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
+		Error       string `json:"error"`
+		ErrorDesc   string `json:"error_description"`
 	}
 
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		return "", err
+		log.Printf("JSON unmarshal error: %v", err)
+		return "", fmt.Errorf("failed to parse token response: %w", err)
+	}
+
+	if tokenResp.Error != "" {
+		log.Printf("Token error: %s - %s", tokenResp.Error, tokenResp.ErrorDesc)
+		return "", fmt.Errorf("token error: %s - %s", tokenResp.Error, tokenResp.ErrorDesc)
+	}
+
+	if tokenResp.AccessToken == "" {
+		return "", fmt.Errorf("no access token in response")
 	}
 
 	h.botToken = tokenResp.AccessToken
 	h.tokenExpiry = time.Now().Add(time.Duration(tokenResp.ExpiresIn-60) * time.Second)
+
+	log.Printf("Token obtained successfully, expires in %d seconds", tokenResp.ExpiresIn)
 
 	return h.botToken, nil
 }
