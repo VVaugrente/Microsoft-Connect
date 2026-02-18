@@ -43,9 +43,12 @@ func main() {
 
 	api := r.Group("/api")
 	{
-		// Webhook Teams - GET pour validation, POST pour messages
+		// Webhook Teams - GET, HEAD et POST
 		api.GET("/webhook", func(c *gin.Context) {
 			c.JSON(200, gin.H{"status": "ready"})
+		})
+		api.HEAD("/webhook", func(c *gin.Context) {
+			c.Status(200)
 		})
 		api.POST("/webhook", teamsBotHandler.HandleWebhook)
 
