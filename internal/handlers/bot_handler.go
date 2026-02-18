@@ -192,15 +192,25 @@ func (h *BotHandler) getBotToken() (string, error) {
 	data.Set("client_secret", h.appPassword)
 	data.Set("scope", "https://api.botframework.com/.default")
 
+	log.Printf("=== TOKEN REQUEST ===")
+	log.Printf("AppID: [%s]", h.appID)
+	log.Printf("Password: [%s...%s] (len=%d)", h.appPassword[:5], h.appPassword[len(h.appPassword)-5:], len(h.appPassword))
+
 	resp, err := http.Post(
 		"https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token",
 		"application/x-www-form-urlencoded",
 		strings.NewReader(data.Encode()),
 	)
 	if err != nil {
+		log.Printf("Token request error: %v", err)
 		return "", err
 	}
 	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	log.Printf("=== TOKEN RESPONSE ===")
+	log.Printf("Status: %d", resp.StatusCode)
+	log.Printf("Body: %s", string(body))
 
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
