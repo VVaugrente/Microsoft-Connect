@@ -19,7 +19,7 @@ func startSelfPing(url string) {
 		// Attendre que le serveur démarre
 		time.Sleep(10 * time.Second)
 
-		ticker := time.NewTicker(5 * time.Minute)
+		ticker := time.NewTicker(1 * time.Minute)
 		defer ticker.Stop()
 
 		client := &http.Client{Timeout: 10 * time.Second}
