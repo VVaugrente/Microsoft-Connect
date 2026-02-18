@@ -2,7 +2,9 @@ package main
 
 import (
 	"log"
+	"net/http"
 	"os"
+	"time"
 
 	"microsoft_connector/config"
 	"microsoft_connector/internal/handlers"
@@ -11,15 +13,45 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Self-ping pour éviter le cold start de Render
+func startSelfPing(url string) {
+	go func() {
+		// Attendre que le serveur démarre
+		time.Sleep(10 * time.Second)
+
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+
+		client := &http.Client{Timeout: 10 * time.Second}
+
+		for {
+			resp, err := client.Get(url + "/health")
+			if err != nil {
+				log.Printf("Self-ping failed: %v", err)
+			} else {
+				resp.Body.Close()
+				log.Printf("Self-ping OK")
+			}
+			<-ticker.C
+		}
+	}()
+}
+
 func main() {
 	cfg := config.Load()
 
-	// Log the port explicitly
 	port := cfg.Port
 	if port == "" {
-		port = "10000" // Render's default
+		port = "10000"
 	}
 	log.Printf("Starting server on port %s", port)
+
+	// Démarrer le self-ping si on est sur Render
+	renderURL := os.Getenv("RENDER_EXTERNAL_URL")
+	if renderURL != "" {
+		log.Printf("Render detected, starting self-ping to %s", renderURL)
+		startSelfPing(renderURL)
+	}
 
 	// Services
 	authService := services.NewAuthService(cfg)
@@ -39,7 +71,7 @@ func main() {
 
 	r := gin.Default()
 
-	// Route racine pour les checks
+	// Route racine
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok", "service": "microsoft-connector"})
 	})
@@ -50,7 +82,7 @@ func main() {
 
 	api := r.Group("/api")
 	{
-		// Webhook Teams - GET, HEAD et POST
+		// Webhook Teams
 		api.GET("/webhook", func(c *gin.Context) {
 			c.JSON(200, gin.H{"status": "ready"})
 		})
@@ -133,7 +165,6 @@ func main() {
 		api.POST("/batch", batchHandler.ExecuteBatch)
 	}
 
-	// Explicitly bind to 0.0.0.0
 	addr := "0.0.0.0:" + port
 	log.Printf("Server listening on %s", addr)
 	if err := r.Run(addr); err != nil {
