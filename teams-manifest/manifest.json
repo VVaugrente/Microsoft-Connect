@@ -3,20 +3,20 @@
   "manifestVersion": "1.16",
   "version": "1.0.0",
   "id": "31fdb9a2-1c79-4b8c-ae3a-799b41baea1e",
-  "packageName": "com.yourcompany.claudebot",
+  "packageName": "com.neo.assistant",
   "developer": {
-    "name": "Your Company",
-    "websiteUrl": "https://yourcompany.com",
-    "privacyUrl": "https://yourcompany.com/privacy",
-    "termsOfUseUrl": "https://yourcompany.com/terms"
+    "name": "NEO",
+    "websiteUrl": "https://microsoft-connect.onrender.com",
+    "privacyUrl": "https://microsoft-connect.onrender.com/privacy",
+    "termsOfUseUrl": "https://microsoft-connect.onrender.com/terms"
   },
   "name": {
-    "short": "Assistant IA",
-    "full": "Assistant Microsoft 365 propulsé par Claude"
+    "short": "NEO",
+    "full": "NEO Assistant"
   },
   "description": {
-    "short": "Assistant IA pour Microsoft 365",
-    "full": "Un assistant intelligent pour gérer vos emails, calendrier, réunions et Teams."
+    "short": "Assistant IA",
+    "full": "Assistant IA pour Microsoft 365"
   },
   "icons": {
     "outline": "outline.png",
@@ -26,25 +26,11 @@
   "bots": [
     {
       "botId": "31fdb9a2-1c79-4b8c-ae3a-799b41baea1e",
-      "scopes": ["personal", "team", "groupchat"],
+      "scopes": ["personal", "team", "groupChat"],
       "supportsFiles": false,
-      "isNotificationOnly": false,
-      "supportsCalling": false,
-      "supportsVideo": false,
-      "commandLists": [
-        {
-          "scopes": ["personal", "team", "groupchat"],
-          "commands": [
-            {"title": "aide", "description": "Afficher l'aide"},
-            {"title": "calendrier", "description": "Voir mes événements"},
-            {"title": "réunion", "description": "Créer une réunion"},
-            {"title": "email", "description": "Envoyer un email"},
-            {"title": "teams", "description": "Voir mes équipes"}
-          ]
-        }
-      ]
+      "isNotificationOnly": false
     }
   ],
   "permissions": ["identity", "messageTeamMembers"],
-  "validDomains": ["votre-domaine.ngrok.io"]
+  "validDomains": ["microsoft-connect.onrender.com"]
 }

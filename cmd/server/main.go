@@ -68,6 +68,7 @@ func main() {
 	batchHandler := handlers.NewBatchHandler(graphService)
 	chatHandler := handlers.NewChatHandler(claudeService, graphService)
 	teamsBotHandler := handlers.NewTeamsBotHandler(claudeService, graphService, os.Getenv("TEAMS_WEBHOOK_SECRET"))
+	botHandler := handlers.NewBotHandler(claudeService, graphService)
 
 	r := gin.Default()
 
@@ -82,6 +83,9 @@ func main() {
 
 	api := r.Group("/api")
 	{
+		// Bot Framework endpoint
+		api.POST("/messages", botHandler.HandleMessage)
+
 		// Webhook Teams
 		api.GET("/webhook", func(c *gin.Context) {
 			c.JSON(200, gin.H{"status": "ready"})
