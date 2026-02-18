@@ -192,12 +192,16 @@ func (h *BotHandler) getBotToken() (string, error) {
 	data.Set("client_secret", h.appPassword)
 	data.Set("scope", "https://api.botframework.com/.default")
 
+	// Utiliser votre tenant ID au lieu de botframework.com
+	tenantID := os.Getenv("TENANT_ID")
+	tokenURL := fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenantID)
+
 	log.Printf("=== TOKEN REQUEST ===")
+	log.Printf("URL: %s", tokenURL)
 	log.Printf("AppID: [%s]", h.appID)
-	log.Printf("Password: [%s...%s] (len=%d)", h.appPassword[:5], h.appPassword[len(h.appPassword)-5:], len(h.appPassword))
 
 	resp, err := http.Post(
-		"https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token",
+		tokenURL,
 		"application/x-www-form-urlencoded",
 		strings.NewReader(data.Encode()),
 	)
@@ -217,7 +221,7 @@ func (h *BotHandler) getBotToken() (string, error) {
 		ExpiresIn   int    `json:"expires_in"`
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return "", err
 	}
 
