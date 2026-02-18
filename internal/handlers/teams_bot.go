@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"bufio"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -38,8 +37,8 @@ type TeamsMessage struct {
 	Conversation struct {
 		ID string `json:"id"`
 	} `json:"conversation"`
-	ServiceURL   string       `json:"serviceUrl"`
-	ChannelData  *ChannelData `json:"channelData,omitempty"`
+	ServiceURL  string       `json:"serviceUrl"`
+	ChannelData *ChannelData `json:"channelData,omitempty"`
 }
 
 type From struct {
