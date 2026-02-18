@@ -192,14 +192,12 @@ func (h *BotHandler) getBotToken() (string, error) {
 	data.Set("client_secret", h.appPassword)
 	data.Set("scope", "https://api.botframework.com/.default")
 
-	tenantID := os.Getenv("TENANT_ID")
-	tokenURL := fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenantID)
+	// Utiliser le tenant botframework.com pour les bots multi-tenant
+	tokenURL := "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token"
 
 	log.Printf("=== TOKEN REQUEST ===")
 	log.Printf("URL: %s", tokenURL)
 	log.Printf("AppID: [%s]", h.appID)
-	log.Printf("AppPassword length: %d", len(h.appPassword))
-	log.Printf("TenantID: [%s]", tenantID)
 
 	resp, err := http.Post(
 		tokenURL,
@@ -220,28 +218,34 @@ func (h *BotHandler) getBotToken() (string, error) {
 
 	log.Printf("=== TOKEN RESPONSE ===")
 	log.Printf("Status: %d", resp.StatusCode)
-	log.Printf("Body length: %d", len(body))
 	log.Printf("Body: %s", string(body))
 
-	if len(body) == 0 {
-		return "", fmt.Errorf("empty token response")
+	// Si botframework.com échoue, essayer avec notre tenant
+	if resp.StatusCode != 200 {
+		log.Printf("Trying with tenant ID...")
+		tenantID := os.Getenv("TENANT_ID")
+		tokenURL = fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenantID)
+
+		resp2, err := http.Post(
+			tokenURL,
+			"application/x-www-form-urlencoded",
+			strings.NewReader(data.Encode()),
+		)
+		if err != nil {
+			return "", err
+		}
+		defer resp2.Body.Close()
+		body, _ = io.ReadAll(resp2.Body)
+		log.Printf("Tenant token response: %s", string(body))
 	}
 
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
-		Error       string `json:"error"`
-		ErrorDesc   string `json:"error_description"`
 	}
 
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		log.Printf("JSON unmarshal error: %v", err)
 		return "", fmt.Errorf("failed to parse token response: %w", err)
-	}
-
-	if tokenResp.Error != "" {
-		log.Printf("Token error: %s - %s", tokenResp.Error, tokenResp.ErrorDesc)
-		return "", fmt.Errorf("token error: %s - %s", tokenResp.Error, tokenResp.ErrorDesc)
 	}
 
 	if tokenResp.AccessToken == "" {
@@ -251,7 +255,7 @@ func (h *BotHandler) getBotToken() (string, error) {
 	h.botToken = tokenResp.AccessToken
 	h.tokenExpiry = time.Now().Add(time.Duration(tokenResp.ExpiresIn-60) * time.Second)
 
-	log.Printf("Token obtained successfully, expires in %d seconds", tokenResp.ExpiresIn)
+	log.Printf("Token obtained successfully")
 
 	return h.botToken, nil
 }
