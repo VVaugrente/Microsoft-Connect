@@ -53,8 +53,9 @@ type BotActivity struct {
 }
 
 type BotAccount struct {
-	ID   string `json:"id,omitempty"`
-	Name string `json:"name,omitempty"`
+	ID          string `json:"id,omitempty"`
+	Name        string `json:"name,omitempty"`
+	AadObjectId string `json:"aadObjectId,omitempty"`
 }
 
 type BotConversation struct {
@@ -116,9 +117,18 @@ func (h *BotHandler) handleMessageActivity(activity *BotActivity) {
 	cleanedText := h.cleanMention(activity.Text)
 	log.Printf("Cleaned message: %s", cleanedText)
 
+	// Extraire l'AAD Object ID de l'utilisateur pour les appels Graph
+	userAADID := ""
+	if activity.From != nil && activity.From.AadObjectId != "" {
+		userAADID = activity.From.AadObjectId
+	}
+
 	context := "Tu es NEO, un assistant Microsoft 365 intégré à Teams.\n"
 	if activity.From != nil && activity.From.Name != "" {
 		context += "Utilisateur: " + activity.From.Name + "\n"
+	}
+	if userAADID != "" {
+		context += "ID utilisateur (pour les appels calendrier/mail): " + userAADID + "\n"
 	}
 	context += "Réponds de manière concise en français."
 
