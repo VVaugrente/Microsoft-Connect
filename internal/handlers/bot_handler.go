@@ -200,12 +200,17 @@ func (h *BotHandler) getBotToken() (string, error) {
 	data.Set("client_secret", h.appPassword)
 	data.Set("scope", "https://api.botframework.com/.default")
 
-	// Utiliser le tenant "common" pour les apps multi-tenant
-	tokenURL := "https://login.microsoftonline.com/common/oauth2/v2.0/token"
+	// Utiliser directement votre tenant ID
+	tenantID := os.Getenv("TENANT_ID")
+	if tenantID == "" {
+		tenantID = "210f5bae-0956-49fb-944b-ed9648c0bd45"
+	}
+	tokenURL := fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenantID)
 
 	log.Printf("=== TOKEN REQUEST ===")
 	log.Printf("URL: %s", tokenURL)
 	log.Printf("AppID: [%s]", h.appID)
+	log.Printf("TenantID: [%s]", tenantID)
 
 	resp, err := http.Post(
 		tokenURL,
