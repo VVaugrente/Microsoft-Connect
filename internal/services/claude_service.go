@@ -9,8 +9,9 @@ import (
 )
 
 type ClaudeService struct {
-	apiKey     string
-	httpClient *http.Client
+	apiKey            string
+	httpClient        *http.Client
+	conversationStore *ConversationStore
 }
 
 type ClaudeRequest struct {
@@ -46,8 +47,9 @@ type ToolResult struct {
 
 func NewClaudeService(apiKey string) *ClaudeService {
 	return &ClaudeService{
-		apiKey:     apiKey,
-		httpClient: &http.Client{},
+		apiKey:            apiKey,
+		httpClient:        &http.Client{},
+		conversationStore: NewConversationStore(),
 	}
 }
 
@@ -86,11 +88,45 @@ func (s *ClaudeService) SendMessage(userMessage string, context string) (string,
 	return "", fmt.Errorf("empty response from Claude")
 }
 
-func (s *ClaudeService) SendMessageWithTools(userMessage string, context string, graphService *GraphService) (string, error) {
-	messages := []Message{
-		{Role: "user", Content: context + "\n\n" + userMessage},
+func (s *ClaudeService) SendMessageWithContext(userMessage string, context string, conversationID string, graphService *GraphService) (string, error) {
+	// Récupérer l'historique
+	history := s.conversationStore.GetHistory(conversationID)
+
+	// Construire les messages avec l'historique
+	messages := []Message{}
+
+	// Ajouter le contexte système comme premier message utilisateur si pas d'historique
+	if len(history) == 0 {
+		messages = append(messages, Message{Role: "user", Content: context + "\n\n" + userMessage})
+	} else {
+		// Reconstruire l'historique
+		for i, msg := range history {
+			if i == 0 {
+				// Premier message avec contexte
+				messages = append(messages, Message{Role: msg.Role, Content: context + "\n\n" + msg.Content})
+			} else {
+				messages = append(messages, Message{Role: msg.Role, Content: msg.Content})
+			}
+		}
+		// Ajouter le nouveau message
+		messages = append(messages, Message{Role: "user", Content: userMessage})
 	}
 
+	// Sauvegarder le message utilisateur
+	s.conversationStore.AddMessage(conversationID, "user", userMessage)
+
+	response, err := s.sendWithTools(messages, graphService)
+	if err != nil {
+		return "", err
+	}
+
+	// Sauvegarder la réponse
+	s.conversationStore.AddMessage(conversationID, "assistant", response)
+
+	return response, nil
+}
+
+func (s *ClaudeService) sendWithTools(messages []Message, graphService *GraphService) (string, error) {
 	for {
 		reqBody := ClaudeRequest{
 			Model:     "claude-sonnet-4-20250514",
@@ -119,7 +155,6 @@ func (s *ClaudeService) SendMessageWithTools(userMessage string, context string,
 			return "", fmt.Errorf("failed to parse response: %w", err)
 		}
 
-		// Si pas d'appel d'outil, retourner le texte
 		if result.StopReason == "end_turn" {
 			for _, block := range result.Content {
 				if block.Type == "text" {
@@ -129,12 +164,9 @@ func (s *ClaudeService) SendMessageWithTools(userMessage string, context string,
 			return "", fmt.Errorf("no text in response")
 		}
 
-		// Si tool_use, exécuter les outils
 		if result.StopReason == "tool_use" {
-			// Ajouter la réponse de l'assistant
 			messages = append(messages, Message{Role: "assistant", Content: result.Content})
 
-			// Exécuter les outils et collecter les résultats
 			var toolResults []ToolResult
 			for _, block := range result.Content {
 				if block.Type == "tool_use" {
@@ -147,7 +179,6 @@ func (s *ClaudeService) SendMessageWithTools(userMessage string, context string,
 				}
 			}
 
-			// Ajouter les résultats des outils
 			messages = append(messages, Message{Role: "user", Content: toolResults})
 		}
 	}
