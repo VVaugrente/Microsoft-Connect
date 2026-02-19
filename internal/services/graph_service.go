@@ -92,7 +92,13 @@ func (s *GraphService) request(method, url string, body map[string]any) (map[str
 		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	if resp.StatusCode == http.StatusNoContent {
+	// Gérer les réponses sans contenu (204 No Content et 202 Accepted)
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusAccepted {
+		return nil, nil
+	}
+
+	// Si le body est vide, retourner nil sans erreur
+	if len(bodyBytes) == 0 {
 		return nil, nil
 	}
 
