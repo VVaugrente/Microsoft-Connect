@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"log"
-	
-
+	"net/http"
 )
 
 type ClaudeService struct {
@@ -195,152 +193,170 @@ func (s *ClaudeService) sendWithTools(messages []Message, graphService *GraphSer
 }
 
 func (s *ClaudeService) executeTool(toolName string, input json.RawMessage, graphService *GraphService) string {
-    var result map[string]any
-    var err error
+	var result map[string]any
+	var err error
 
-    log.Printf("=== EXECUTING TOOL: %s ===", toolName)
-    log.Printf("Input: %s", string(input))
+	log.Printf("=== EXECUTING TOOL: %s ===", toolName)
+	log.Printf("Input: %s", string(input))
 
-    switch toolName {
-    case "get_calendar_events":
-        var params struct {
-            UserID string `json:"user_id"`
-        }
-        json.Unmarshal(input, &params)
-        log.Printf("Calendar request for user_id: %s", params.UserID)
-        if params.UserID == "" {
-            return "Erreur: user_id requis pour accéder au calendrier. Utilise l'ID utilisateur fourni dans le contexte."
-        }
-        endpoint := "/users/" + params.UserID + "/events?$select=subject,start,end,location,onlineMeeting&$top=10&$orderby=start/dateTime"
-        log.Printf("Graph endpoint: %s", endpoint)
-        result, err = graphService.Get(endpoint)
+	switch toolName {
+	case "get_calendar_events":
+		var params struct {
+			UserID string `json:"user_id"`
+		}
+		json.Unmarshal(input, &params)
+		log.Printf("Calendar request for user_id: %s", params.UserID)
+		if params.UserID == "" {
+			return "Erreur: user_id requis pour accéder au calendrier. Utilise l'ID utilisateur fourni dans le contexte."
+		}
+		endpoint := "/users/" + params.UserID + "/events?$select=subject,start,end,location,onlineMeeting&$top=10&$orderby=start/dateTime"
+		log.Printf("Graph endpoint: %s", endpoint)
+		result, err = graphService.Get(endpoint)
 
-    case "get_users":
-        result, err = graphService.Get("/users?$select=displayName,mail,jobTitle,id&$top=20")
+		// LOG DÉTAILLÉ DU RÉSULTAT
+		if err != nil {
+			log.Printf("=== CALENDAR ERROR ===")
+			log.Printf("Error: %v", err)
+			return fmt.Sprintf("Erreur lors de la récupération du calendrier: %s", err.Error())
+		}
 
-    case "get_teams":
-        result, err = graphService.Get("/groups?$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&$select=id,displayName,description")
+		jsonResult, _ := json.MarshalIndent(result, "", "  ")
+		log.Printf("=== CALENDAR RESULT ===")
+		log.Printf("%s", string(jsonResult))
 
-    case "send_email":
-        var params struct {
-            From    string `json:"from"`
-            To      string `json:"to"`
-            Subject string `json:"subject"`
-            Body    string `json:"body"`
-        }
-        json.Unmarshal(input, &params)
-        if params.From == "" {
-            return "Erreur: from (email expéditeur) requis"
-        }
+		// Compter les événements
+		if value, ok := result["value"].([]interface{}); ok {
+			log.Printf("Nombre d'événements trouvés: %d", len(value))
+		}
 
-        emailBody := map[string]any{
-            "message": map[string]any{
-                "subject": params.Subject,
-                "body": map[string]any{
-                    "contentType": "Text",
-                    "content":     params.Body,
-                },
-                "toRecipients": []map[string]any{
-                    {"emailAddress": map[string]string{"address": params.To}},
-                },
-            },
-        }
-        result, err = graphService.Post("/users/"+params.From+"/sendMail", emailBody)
-        if err == nil {
-            return "Email envoyé avec succès"
-        }
+		return string(jsonResult)
 
-    case "create_meeting":
-        var params struct {
-            UserID    string   `json:"user_id"`
-            Subject   string   `json:"subject"`
-            StartTime string   `json:"start_time"`
-            EndTime   string   `json:"end_time"`
-            Attendees []string `json:"attendees"`
-        }
-        json.Unmarshal(input, &params)
-        if params.UserID == "" {
-            return "Erreur: user_id requis"
-        }
+	case "get_users":
+		result, err = graphService.Get("/users?$select=displayName,mail,jobTitle,id&$top=20")
 
-        attendees := make([]map[string]any, len(params.Attendees))
-        for i, email := range params.Attendees {
-            attendees[i] = map[string]any{
-                "emailAddress": map[string]string{"address": email},
-                "type":         "required",
-            }
-        }
+	case "get_teams":
+		result, err = graphService.Get("/groups?$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&$select=id,displayName,description")
 
-        meetingBody := map[string]any{
-            "subject": params.Subject,
-            "start": map[string]string{
-                "dateTime": params.StartTime,
-                "timeZone": "Europe/Paris",
-            },
-            "end": map[string]string{
-                "dateTime": params.EndTime,
-                "timeZone": "Europe/Paris",
-            },
-            "attendees":             attendees,
-            "isOnlineMeeting":       true,
-            "onlineMeetingProvider": "teamsForBusiness",
-        }
-        result, err = graphService.Post("/users/"+params.UserID+"/events", meetingBody)
-        if err == nil {
-            if onlineMeeting, ok := result["onlineMeeting"].(map[string]any); ok {
-                if joinURL, ok := onlineMeeting["joinUrl"].(string); ok {
-                    return fmt.Sprintf("Réunion créée ! Lien: %s", joinURL)
-                }
-            }
-            return "Réunion créée avec succès"
-        }
+	case "send_email":
+		var params struct {
+			From    string `json:"from"`
+			To      string `json:"to"`
+			Subject string `json:"subject"`
+			Body    string `json:"body"`
+		}
+		json.Unmarshal(input, &params)
+		if params.From == "" {
+			return "Erreur: from (email expéditeur) requis"
+		}
 
-    case "find_meeting_times":
-        var params struct {
-            Attendees       []string `json:"attendees"`
-            DurationMinutes int      `json:"duration_minutes"`
-        }
-        json.Unmarshal(input, &params)
+		emailBody := map[string]any{
+			"message": map[string]any{
+				"subject": params.Subject,
+				"body": map[string]any{
+					"contentType": "Text",
+					"content":     params.Body,
+				},
+				"toRecipients": []map[string]any{
+					{"emailAddress": map[string]string{"address": params.To}},
+				},
+			},
+		}
+		result, err = graphService.Post("/users/"+params.From+"/sendMail", emailBody)
+		if err == nil {
+			return "Email envoyé avec succès"
+		}
 
-        attendees := make([]map[string]any, len(params.Attendees))
-        for i, email := range params.Attendees {
-            attendees[i] = map[string]any{
-                "emailAddress": map[string]string{"address": email},
-                "type":         "required",
-            }
-        }
+	case "create_meeting":
+		var params struct {
+			UserID    string   `json:"user_id"`
+			Subject   string   `json:"subject"`
+			StartTime string   `json:"start_time"`
+			EndTime   string   `json:"end_time"`
+			Attendees []string `json:"attendees"`
+		}
+		json.Unmarshal(input, &params)
+		if params.UserID == "" {
+			return "Erreur: user_id requis"
+		}
 
-        body := map[string]any{
-            "attendees":       attendees,
-            "meetingDuration": fmt.Sprintf("PT%dM", params.DurationMinutes),
-        }
-        result, err = graphService.Post("/me/findMeetingTimes", body)
+		attendees := make([]map[string]any, len(params.Attendees))
+		for i, email := range params.Attendees {
+			attendees[i] = map[string]any{
+				"emailAddress": map[string]string{"address": email},
+				"type":         "required",
+			}
+		}
 
-    case "send_channel_message":
-        var params struct {
-            TeamID    string `json:"team_id"`
-            ChannelID string `json:"channel_id"`
-            Message   string `json:"message"`
-        }
-        json.Unmarshal(input, &params)
+		meetingBody := map[string]any{
+			"subject": params.Subject,
+			"start": map[string]string{
+				"dateTime": params.StartTime,
+				"timeZone": "Europe/Paris",
+			},
+			"end": map[string]string{
+				"dateTime": params.EndTime,
+				"timeZone": "Europe/Paris",
+			},
+			"attendees":             attendees,
+			"isOnlineMeeting":       true,
+			"onlineMeetingProvider": "teamsForBusiness",
+		}
+		result, err = graphService.Post("/users/"+params.UserID+"/events", meetingBody)
+		if err == nil {
+			if onlineMeeting, ok := result["onlineMeeting"].(map[string]any); ok {
+				if joinURL, ok := onlineMeeting["joinUrl"].(string); ok {
+					return fmt.Sprintf("Réunion créée ! Lien: %s", joinURL)
+				}
+			}
+			return "Réunion créée avec succès"
+		}
 
-        body := map[string]any{
-            "body": map[string]any{
-                "content": params.Message,
-            },
-        }
-        endpoint := fmt.Sprintf("/teams/%s/channels/%s/messages", params.TeamID, params.ChannelID)
-        result, err = graphService.Post(endpoint, body)
-        if err == nil {
-            return "Message envoyé dans le canal"
-        }
+	case "find_meeting_times":
+		var params struct {
+			Attendees       []string `json:"attendees"`
+			DurationMinutes int      `json:"duration_minutes"`
+		}
+		json.Unmarshal(input, &params)
 
-    case "get_user_presence":
-        var params struct {
-            UserID string `json:"user_id"`
-        }
-        json.Unmarshal(input, &params)
-        result, err = graphService.GetBeta("/users/" + params.UserID + "/presence")
+		attendees := make([]map[string]any, len(params.Attendees))
+		for i, email := range params.Attendees {
+			attendees[i] = map[string]any{
+				"emailAddress": map[string]string{"address": email},
+				"type":         "required",
+			}
+		}
+
+		body := map[string]any{
+			"attendees":       attendees,
+			"meetingDuration": fmt.Sprintf("PT%dM", params.DurationMinutes),
+		}
+		result, err = graphService.Post("/me/findMeetingTimes", body)
+
+	case "send_channel_message":
+		var params struct {
+			TeamID    string `json:"team_id"`
+			ChannelID string `json:"channel_id"`
+			Message   string `json:"message"`
+		}
+		json.Unmarshal(input, &params)
+
+		body := map[string]any{
+			"body": map[string]any{
+				"content": params.Message,
+			},
+		}
+		endpoint := fmt.Sprintf("/teams/%s/channels/%s/messages", params.TeamID, params.ChannelID)
+		result, err = graphService.Post(endpoint, body)
+		if err == nil {
+			return "Message envoyé dans le canal"
+		}
+
+	case "get_user_presence":
+		var params struct {
+			UserID string `json:"user_id"`
+		}
+		json.Unmarshal(input, &params)
+		result, err = graphService.GetBeta("/users/" + params.UserID + "/presence")
 
 	default:
 		return fmt.Sprintf("Outil inconnu: %s", toolName)

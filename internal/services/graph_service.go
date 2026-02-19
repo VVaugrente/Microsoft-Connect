@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 )
 
@@ -52,6 +53,10 @@ func (s *GraphService) request(method, url string, body map[string]any) (map[str
 		return nil, fmt.Errorf("failed to get access token: %w", err)
 	}
 
+	log.Printf("=== GRAPH API REQUEST ===")
+	log.Printf("Method: %s", method)
+	log.Printf("URL: %s", url)
+
 	var reqBody io.Reader
 	if body != nil {
 		jsonBody, err := json.Marshal(body)
@@ -59,6 +64,7 @@ func (s *GraphService) request(method, url string, body map[string]any) (map[str
 			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}
 		reqBody = bytes.NewBuffer(jsonBody)
+		log.Printf("Request body: %s", string(jsonBody))
 	}
 
 	req, err := http.NewRequest(method, url, reqBody)
@@ -76,8 +82,13 @@ func (s *GraphService) request(method, url string, body map[string]any) (map[str
 	}
 	defer resp.Body.Close()
 
+	log.Printf("=== GRAPH API RESPONSE ===")
+	log.Printf("Status: %d", resp.StatusCode)
+
+	bodyBytes, _ := io.ReadAll(resp.Body)
+	log.Printf("Response body: %s", string(bodyBytes))
+
 	if resp.StatusCode >= 400 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
@@ -86,7 +97,7 @@ func (s *GraphService) request(method, url string, body map[string]any) (map[str
 	}
 
 	var result map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := json.Unmarshal(bodyBytes, &result); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
