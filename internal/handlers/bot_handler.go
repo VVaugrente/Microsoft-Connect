@@ -119,18 +119,26 @@ func (h *BotHandler) handleMessageActivity(activity *BotActivity) {
 
 	// Extraire l'AAD Object ID de l'utilisateur pour les appels Graph
 	userAADID := ""
-	if activity.From != nil && activity.From.AadObjectId != "" {
-		userAADID = activity.From.AadObjectId
+	if activity.From != nil {
+		if activity.From.AadObjectId != "" {
+			userAADID = activity.From.AadObjectId
+		}
+		log.Printf("User AAD ID: %s", userAADID)
 	}
 
-	context := "Tu es NEO, un assistant Microsoft 365 intégré à Teams.\n"
-	if activity.From != nil && activity.From.Name != "" {
-		context += "Utilisateur: " + activity.From.Name + "\n"
-	}
-	if userAADID != "" {
-		context += "ID utilisateur (pour les appels calendrier/mail): " + userAADID + "\n"
-	}
-	context += "Réponds de manière concise en français."
+	context := `Tu es NEO, un assistant Microsoft 365 intégré à Teams.
+Tu as accès aux outils Microsoft Graph pour aider l'utilisateur.
+
+INFORMATION IMPORTANTE - Utilisateur actuel:
+- Nom: ` + activity.From.Name + `
+- ID Azure AD (user_id à utiliser pour les appels): ` + userAADID + `
+
+Quand l'utilisateur demande son calendrier, ses emails, ou toute information personnelle,
+utilise TOUJOURS l'ID Azure AD ci-dessus comme paramètre "user_id".
+
+Réponds de manière concise en français.`
+
+	log.Printf("Context sent to Claude includes user_id: %s", userAADID)
 
 	// Utiliser l'ID de conversation pour le contexte
 	conversationID := activity.Conversation.ID
