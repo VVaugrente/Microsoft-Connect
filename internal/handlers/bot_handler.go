@@ -109,29 +109,29 @@ func (h *BotHandler) processActivity(activity *BotActivity) {
 }
 
 func (h *BotHandler) handleMessageActivity(activity *BotActivity) {
-    if activity.Text == "" {
-        return
-    }
+	if activity.Text == "" {
+		return
+	}
 
-    cleanedText := h.cleanMention(activity.Text)
-    log.Printf("Cleaned message: %s", cleanedText)
+	cleanedText := h.cleanMention(activity.Text)
+	log.Printf("Cleaned message: %s", cleanedText)
 
-    context := "Tu es NEO, un assistant Microsoft 365 intégré à Teams.\n"
-    if activity.From != nil && activity.From.Name != "" {
-        context += "Utilisateur: " + activity.From.Name + "\n"
-    }
-    context += "Réponds de manière concise en français."
+	context := "Tu es NEO, un assistant Microsoft 365 intégré à Teams.\n"
+	if activity.From != nil && activity.From.Name != "" {
+		context += "Utilisateur: " + activity.From.Name + "\n"
+	}
+	context += "Réponds de manière concise en français."
 
-    // Utiliser l'ID de conversation pour le contexte
-    conversationID := activity.Conversation.ID
+	// Utiliser l'ID de conversation pour le contexte
+	conversationID := activity.Conversation.ID
 
-    response, err := h.claudeService.SendMessageWithContext(cleanedText, context, conversationID, h.graphService)
-    if err != nil {
-        log.Printf("Claude error: %v", err)
-        response = "Désolé, une erreur s'est produite."
-    }
+	response, err := h.claudeService.SendMessageWithContext(cleanedText, context, conversationID, h.graphService)
+	if err != nil {
+		log.Printf("Claude error: %v", err)
+		response = "Désolé, une erreur s'est produite."
+	}
 
-    h.sendReply(activity, response)
+	h.sendReply(activity, response)
 }
 
 func (h *BotHandler) sendReply(activity *BotActivity, text string) {

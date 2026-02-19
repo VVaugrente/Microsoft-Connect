@@ -126,6 +126,13 @@ func (s *ClaudeService) SendMessageWithContext(userMessage string, context strin
 	return response, nil
 }
 
+func (s *ClaudeService) SendMessageWithTools(userMessage string, context string, graphService *GraphService) (string, error) {
+	messages := []Message{
+		{Role: "user", Content: context + "\n\n" + userMessage},
+	}
+	return s.sendWithTools(messages, graphService)
+}
+
 func (s *ClaudeService) sendWithTools(messages []Message, graphService *GraphService) (string, error) {
 	for {
 		reqBody := ClaudeRequest{
