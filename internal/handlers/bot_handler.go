@@ -117,8 +117,8 @@ func (h *BotHandler) handleMessageActivity(activity *BotActivity) {
 	cleanedText := h.cleanMention(activity.Text)
 	log.Printf("Cleaned message: %s", cleanedText)
 
-	// Extraire l'AAD Object ID de l'utilisateur pour les appels Graph
 	userAADID := ""
+	userEmail := ""
 	if activity.From != nil {
 		if activity.From.AadObjectId != "" {
 			userAADID = activity.From.AadObjectId
@@ -126,15 +126,30 @@ func (h *BotHandler) handleMessageActivity(activity *BotActivity) {
 		log.Printf("User AAD ID: %s", userAADID)
 	}
 
+	// Récupérer l'email de l'utilisateur pour l'envoi d'emails
+	if userAADID != "" {
+		userInfo, err := h.graphService.Get("/users/" + userAADID + "?$select=mail,userPrincipalName")
+		if err == nil {
+			if mail, ok := userInfo["mail"].(string); ok && mail != "" {
+				userEmail = mail
+			} else if upn, ok := userInfo["userPrincipalName"].(string); ok {
+				userEmail = upn
+			}
+		}
+		log.Printf("User email: %s", userEmail)
+	}
+
 	context := `Tu es NEO, un assistant Microsoft 365 intégré à Teams.
-Tu as accès aux outils Microsoft Graph pour aider l'utilisateur.
 
-INFORMATION IMPORTANTE - Utilisateur actuel:
+UTILISATEUR ACTUEL:
 - Nom: ` + activity.From.Name + `
-- ID Azure AD (user_id à utiliser pour les appels): ` + userAADID + `
+- ID Azure AD (user_id): ` + userAADID + `
+- Email: ` + userEmail + `
 
-Quand l'utilisateur demande son calendrier, ses emails, ou toute information personnelle,
-utilise TOUJOURS l'ID Azure AD ci-dessus comme paramètre "user_id".
+INSTRUCTIONS POUR LES EMAILS:
+- Utilise l'email ci-dessus comme paramètre "from" pour send_email
+- Si l'utilisateur ne précise pas le sujet, demande-le
+- Si l'utilisateur ne précise pas le contenu, demande-le
 
 Réponds de manière concise en français.`
 
