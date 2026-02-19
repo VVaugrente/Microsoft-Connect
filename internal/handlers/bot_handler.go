@@ -138,27 +138,31 @@ func (h *BotHandler) handleMessageActivity(activity *BotActivity) {
 func (h *BotHandler) sendReply(activity *BotActivity, text string) {
 	token, err := h.getBotToken()
 	if err != nil {
-		log.Printf("Error getting bot token: %v", err)
+		log.Printf("Failed to get bot token: %v", err)
 		return
 	}
 
-	replyActivity := BotActivity{
-		Type:         "message",
-		Text:         text,
-		From:         activity.Recipient,
-		Recipient:    activity.From,
-		Conversation: activity.Conversation,
-		ReplyToID:    activity.ID,
-	}
-
-	jsonBody, _ := json.Marshal(replyActivity)
-
-	// URL pour répondre
-	replyURL := fmt.Sprintf("%sv3/conversations/%s/activities/%s",
-		activity.ServiceURL,
+	// Construire l'URL de réponse - s'assurer que serviceUrl se termine par /
+	serviceURL := strings.TrimSuffix(activity.ServiceURL, "/")
+	replyURL := fmt.Sprintf("%s/v3/conversations/%s/activities/%s",
+		serviceURL,
 		activity.Conversation.ID,
 		activity.ID,
 	)
+
+	reply := BotActivity{
+		Type:         "message",
+		From:         activity.Recipient,
+		Recipient:    activity.From,
+		Conversation: activity.Conversation,
+		Text:         text,
+		ReplyToID:    activity.ID,
+	}
+
+	jsonBody, _ := json.Marshal(reply)
+	log.Printf("=== SENDING REPLY ===")
+	log.Printf("URL: %s", replyURL)
+	log.Printf("Body: %s", string(jsonBody))
 
 	req, _ := http.NewRequest("POST", replyURL, bytes.NewBuffer(jsonBody))
 	req.Header.Set("Content-Type", "application/json")
@@ -167,12 +171,16 @@ func (h *BotHandler) sendReply(activity *BotActivity, text string) {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Printf("Error sending reply: %v", err)
+		log.Printf("Failed to send reply: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
+	respBody, _ := io.ReadAll(resp.Body)
 	log.Printf("Reply sent, status: %d", resp.StatusCode)
+	if resp.StatusCode != 200 && resp.StatusCode != 201 {
+		log.Printf("Reply error body: %s", string(respBody))
+	}
 }
 
 func (h *BotHandler) getBotToken() (string, error) {
@@ -192,8 +200,8 @@ func (h *BotHandler) getBotToken() (string, error) {
 	data.Set("client_secret", h.appPassword)
 	data.Set("scope", "https://api.botframework.com/.default")
 
-	// Utiliser le tenant botframework.com pour les bots multi-tenant
-	tokenURL := "https://login.microsoftonline.com/botframework.com/oauth2/v2.0/token"
+	// Utiliser le tenant "common" pour les apps multi-tenant
+	tokenURL := "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 
 	log.Printf("=== TOKEN REQUEST ===")
 	log.Printf("URL: %s", tokenURL)
@@ -205,56 +213,32 @@ func (h *BotHandler) getBotToken() (string, error) {
 		strings.NewReader(data.Encode()),
 	)
 	if err != nil {
-		log.Printf("Token HTTP error: %v", err)
-		return "", err
+		return "", fmt.Errorf("token request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Printf("Error reading token response: %v", err)
-		return "", err
-	}
-
+	body, _ := io.ReadAll(resp.Body)
 	log.Printf("=== TOKEN RESPONSE ===")
 	log.Printf("Status: %d", resp.StatusCode)
 	log.Printf("Body: %s", string(body))
 
-	// Si botframework.com échoue, essayer avec notre tenant
-	if resp.StatusCode != 200 {
-		log.Printf("Trying with tenant ID...")
-		tenantID := os.Getenv("TENANT_ID")
-		tokenURL = fmt.Sprintf("https://login.microsoftonline.com/%s/oauth2/v2.0/token", tenantID)
-
-		resp2, err := http.Post(
-			tokenURL,
-			"application/x-www-form-urlencoded",
-			strings.NewReader(data.Encode()),
-		)
-		if err != nil {
-			return "", err
-		}
-		defer resp2.Body.Close()
-		body, _ = io.ReadAll(resp2.Body)
-		log.Printf("Tenant token response: %s", string(body))
-	}
-
 	var tokenResp struct {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
+		Error       string `json:"error"`
+		ErrorDesc   string `json:"error_description"`
 	}
 
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
 		return "", fmt.Errorf("failed to parse token response: %w", err)
 	}
 
-	if tokenResp.AccessToken == "" {
-		return "", fmt.Errorf("no access token in response")
+	if tokenResp.Error != "" {
+		return "", fmt.Errorf("token error: %s - %s", tokenResp.Error, tokenResp.ErrorDesc)
 	}
 
 	h.botToken = tokenResp.AccessToken
 	h.tokenExpiry = time.Now().Add(time.Duration(tokenResp.ExpiresIn-60) * time.Second)
-
 	log.Printf("Token obtained successfully")
 
 	return h.botToken, nil
