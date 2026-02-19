@@ -10,24 +10,27 @@ func GetMicrosoftTools() []Tool {
 	return []Tool{
 		{
 			Name:        "get_calendar_events",
-			Description: "Récupère les événements du calendrier de l'utilisateur",
+			Description: "Récupère les événements du calendrier d'un utilisateur",
 			InputSchema: map[string]interface{}{
-				"type":       "object",
-				"properties": map[string]interface{}{},
-				"required":   []string{},
+				"type": "object",
+				"properties": map[string]interface{}{
+					"user_id": map[string]string{"type": "string", "description": "ID ou email de l'utilisateur"},
+				},
+				"required": []string{"user_id"},
 			},
 		},
 		{
 			Name:        "send_email",
-			Description: "Envoie un email",
+			Description: "Envoie un email au nom d'un utilisateur",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
+					"from":    map[string]string{"type": "string", "description": "Email de l'expéditeur"},
 					"to":      map[string]string{"type": "string", "description": "Adresse email du destinataire"},
 					"subject": map[string]string{"type": "string", "description": "Sujet de l'email"},
 					"body":    map[string]string{"type": "string", "description": "Contenu de l'email"},
 				},
-				"required": []string{"to", "subject", "body"},
+				"required": []string{"from", "to", "subject", "body"},
 			},
 		},
 		{
@@ -48,16 +51,17 @@ func GetMicrosoftTools() []Tool {
 		},
 		{
 			Name:        "create_meeting",
-			Description: "Créer une réunion Teams",
+			Description: "Créer une réunion Teams pour un utilisateur",
 			InputSchema: map[string]interface{}{
 				"type": "object",
 				"properties": map[string]interface{}{
+					"user_id":    map[string]string{"type": "string", "description": "ID ou email de l'organisateur"},
 					"subject":    map[string]string{"type": "string", "description": "Sujet de la réunion"},
 					"start_time": map[string]string{"type": "string", "description": "Date/heure de début (ISO 8601)"},
 					"end_time":   map[string]string{"type": "string", "description": "Date/heure de fin (ISO 8601)"},
 					"attendees":  map[string]interface{}{"type": "array", "items": map[string]string{"type": "string"}, "description": "Liste des emails des participants"},
 				},
-				"required": []string{"subject", "start_time", "end_time"},
+				"required": []string{"user_id", "subject", "start_time", "end_time"},
 			},
 		},
 		{

@@ -195,23 +195,40 @@ func (s *ClaudeService) executeTool(toolName string, input json.RawMessage, grap
 	var result map[string]any
 	var err error
 
+	// Extraire l'userID des paramètres si fourni
+	var baseParams struct {
+		UserID string `json:"user_id"`
+	}
+	json.Unmarshal(input, &baseParams)
+
 	switch toolName {
 	case "get_calendar_events":
-		result, err = graphService.Get("/me/events?$select=subject,start,end,location,onlineMeeting&$top=10&$orderby=start/dateTime")
+		var params struct {
+			UserID string `json:"user_id"`
+		}
+		json.Unmarshal(input, &params)
+		if params.UserID == "" {
+			return "Erreur: user_id requis pour accéder au calendrier"
+		}
+		result, err = graphService.Get("/users/" + params.UserID + "/events?$select=subject,start,end,location,onlineMeeting&$top=10&$orderby=start/dateTime")
 
 	case "get_users":
 		result, err = graphService.Get("/users?$select=displayName,mail,jobTitle,id&$top=20")
 
 	case "get_teams":
-		result, err = graphService.Get("/me/joinedTeams")
+		result, err = graphService.Get("/groups?$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&$select=id,displayName,description")
 
 	case "send_email":
 		var params struct {
+			From    string `json:"from"`
 			To      string `json:"to"`
 			Subject string `json:"subject"`
 			Body    string `json:"body"`
 		}
 		json.Unmarshal(input, &params)
+		if params.From == "" {
+			return "Erreur: from (email expéditeur) requis"
+		}
 
 		emailBody := map[string]any{
 			"message": map[string]any{
@@ -225,19 +242,23 @@ func (s *ClaudeService) executeTool(toolName string, input json.RawMessage, grap
 				},
 			},
 		}
-		result, err = graphService.Post("/me/sendMail", emailBody)
+		result, err = graphService.Post("/users/"+params.From+"/sendMail", emailBody)
 		if err == nil {
 			return "Email envoyé avec succès"
 		}
 
 	case "create_meeting":
 		var params struct {
+			UserID    string   `json:"user_id"`
 			Subject   string   `json:"subject"`
 			StartTime string   `json:"start_time"`
 			EndTime   string   `json:"end_time"`
 			Attendees []string `json:"attendees"`
 		}
 		json.Unmarshal(input, &params)
+		if params.UserID == "" {
+			return "Erreur: user_id requis"
+		}
 
 		attendees := make([]map[string]any, len(params.Attendees))
 		for i, email := range params.Attendees {
@@ -261,10 +282,12 @@ func (s *ClaudeService) executeTool(toolName string, input json.RawMessage, grap
 			"isOnlineMeeting":       true,
 			"onlineMeetingProvider": "teamsForBusiness",
 		}
-		result, err = graphService.Post("/me/events", meetingBody)
+		result, err = graphService.Post("/users/"+params.UserID+"/events", meetingBody)
 		if err == nil {
-			if joinURL, ok := result["onlineMeeting"].(map[string]any)["joinUrl"].(string); ok {
-				return fmt.Sprintf("Réunion créée ! Lien: %s", joinURL)
+			if onlineMeeting, ok := result["onlineMeeting"].(map[string]any); ok {
+				if joinURL, ok := onlineMeeting["joinUrl"].(string); ok {
+					return fmt.Sprintf("Réunion créée ! Lien: %s", joinURL)
+				}
 			}
 			return "Réunion créée avec succès"
 		}
