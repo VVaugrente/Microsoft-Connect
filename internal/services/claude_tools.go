@@ -45,12 +45,15 @@ func GetMicrosoftTools() []Tool {
 			Name:        "get_teams",
 			Description: "Liste les équipes Teams de l'utilisateur",
 			InputSchema: map[string]interface{}{
-				"type":       "object",
-				"properties": map[string]interface{}{},
+				"type": "object",
+				"properties": map[string]interface{}{
+					"user_id": map[string]string{"type": "string", "description": "ID de l'utilisateur pour récupérer ses équipes Teams"},
+				},
+				"required": []string{"user_id"},
 			},
 		},
 		{
-			Name:        "create_meeting", // done 
+			Name:        "create_meeting", // done
 			Description: "Créer une réunion Teams pour un utilisateur",
 			InputSchema: map[string]interface{}{
 				"type": "object",
@@ -77,7 +80,7 @@ func GetMicrosoftTools() []Tool {
 			},
 		},
 		{
-			Name:        "send_channel_message", // done 
+			Name:        "send_channel_message", // done
 			Description: "Envoyer un message dans un canal Teams",
 			InputSchema: map[string]interface{}{
 				"type": "object",
