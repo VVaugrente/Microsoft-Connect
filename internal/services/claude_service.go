@@ -235,7 +235,14 @@ func (s *ClaudeService) executeTool(toolName string, input json.RawMessage, grap
 		result, err = graphService.Get("/users?$select=displayName,mail,jobTitle,id&$top=20")
 
 	case "get_teams":
-		result, err = graphService.Get("/groups?$filter=resourceProvisioningOptions/Any(x:x eq 'Team')&$select=id,displayName,description")
+		var params struct {
+			UserID string `json:"user_id"`
+		}
+		json.Unmarshal(input, &params)
+		if params.UserID == "" {
+			return "Erreur: user_id requis pour lister les équipes Teams. Utilise l'ID utilisateur fourni dans le contexte."
+		}
+		result, err = graphService.Get("/users/" + params.UserID + "/joinedTeams")
 
 	case "send_email":
 		var params struct {

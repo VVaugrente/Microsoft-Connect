@@ -9,7 +9,7 @@ type Tool struct {
 func GetMicrosoftTools() []Tool {
 	return []Tool{
 		{
-			Name:        "get_calendar_events",
+			Name:        "get_calendar_events", // done
 			Description: "Récupère les événements du calendrier d'un utilisateur",
 			InputSchema: map[string]interface{}{
 				"type": "object",
@@ -20,7 +20,7 @@ func GetMicrosoftTools() []Tool {
 			},
 		},
 		{
-			Name:        "send_email",
+			Name:        "send_email", // done
 			Description: "Envoie un email au nom d'un utilisateur",
 			InputSchema: map[string]interface{}{
 				"type": "object",
@@ -34,7 +34,7 @@ func GetMicrosoftTools() []Tool {
 			},
 		},
 		{
-			Name:        "get_users",
+			Name:        "get_users", // done
 			Description: "Liste les utilisateurs de l'organisation",
 			InputSchema: map[string]interface{}{
 				"type":       "object",
@@ -50,7 +50,7 @@ func GetMicrosoftTools() []Tool {
 			},
 		},
 		{
-			Name:        "create_meeting",
+			Name:        "create_meeting", // done 
 			Description: "Créer une réunion Teams pour un utilisateur",
 			InputSchema: map[string]interface{}{
 				"type": "object",
@@ -77,7 +77,7 @@ func GetMicrosoftTools() []Tool {
 			},
 		},
 		{
-			Name:        "send_channel_message",
+			Name:        "send_channel_message", // done 
 			Description: "Envoyer un message dans un canal Teams",
 			InputSchema: map[string]interface{}{
 				"type": "object",
