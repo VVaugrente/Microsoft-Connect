@@ -365,6 +365,16 @@ func (s *ClaudeService) executeTool(toolName string, input json.RawMessage, grap
 		json.Unmarshal(input, &params)
 		result, err = graphService.GetBeta("/users/" + params.UserID + "/presence")
 
+	case "get_team_channels":
+		var params struct {
+			TeamID string `json:"team_id"`
+		}
+		json.Unmarshal(input, &params)
+		if params.TeamID == "" {
+			return "Erreur: team_id requis"
+		}
+		result, err = graphService.Get("/teams/" + params.TeamID + "/channels")
+
 	default:
 		return fmt.Sprintf("Outil inconnu: %s", toolName)
 	}

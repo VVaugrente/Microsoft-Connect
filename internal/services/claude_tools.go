@@ -103,5 +103,16 @@ func GetMicrosoftTools() []Tool {
 				"required": []string{"user_id"},
 			},
 		},
+		{
+			Name:        "get_team_channels",
+			Description: "Liste les canaux d'une équipe Teams",
+			InputSchema: map[string]interface{}{
+				"type": "object",
+				"properties": map[string]interface{}{
+					"team_id": map[string]string{"type": "string", "description": "ID de l'équipe Teams"},
+				},
+				"required": []string{"team_id"},
+			},
+		},
 	}
 }
