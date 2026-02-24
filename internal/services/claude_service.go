@@ -8,7 +8,6 @@ import (
 	"log"
 	"net/http"
 	"time"
-	"net/url"
 )
 
 type ClaudeService struct {
@@ -336,7 +335,8 @@ func (s *ClaudeService) executeTool(toolName string, input json.RawMessage, grap
 		if params.UserID == "" {
 			return "Erreur: user_id requis"
 		}
-		result, err = graphService.Get("/users/" + params.UserID + "/messages?$filter=importance eq 'high'&$top=20")
+		// Utiliser $search au lieu de $filter pour les messages
+		result, err = graphService.Get("/users/" + params.UserID + "/messages?$search=\"importance:high\"&$top=20")
 
 	case "get_emails_from":
 		var params struct {
@@ -347,9 +347,8 @@ func (s *ClaudeService) executeTool(toolName string, input json.RawMessage, grap
 		if params.UserID == "" || params.FromEmail == "" {
 			return "Erreur: user_id et from_email requis"
 		}
-		// Encoder l'email pour éviter les problèmes de caractères spéciaux
-		encodedEmail := url.QueryEscape(params.FromEmail)
-		result, err = graphService.Get("/users/" + params.UserID + "/messages?$filter=from/emailAddress/address eq '" + encodedEmail + "'&$top=20")
+		// Utiliser $search au lieu de $filter
+		result, err = graphService.Get("/users/" + params.UserID + "/messages?$search=\"from:" + params.FromEmail + "\"&$top=20")
 
 	case "forward_email":
 		var params struct {
