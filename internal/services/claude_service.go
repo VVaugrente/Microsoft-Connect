@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"time"
+	"url"
 )
 
 type ClaudeService struct {
@@ -253,8 +254,8 @@ func (s *ClaudeService) executeTool(toolName string, input json.RawMessage, grap
 				"dateTime": params.EndTime,
 				"timeZone": "Europe/Paris",
 			},
-			"attendees":           attendeesList,
-			"isOnlineMeeting":     true,
+			"attendees":             attendeesList,
+			"isOnlineMeeting":       true,
 			"onlineMeetingProvider": "teamsForBusiness",
 		}
 		result, err = graphService.Post("/users/"+params.UserID+"/events", body)
@@ -346,7 +347,9 @@ func (s *ClaudeService) executeTool(toolName string, input json.RawMessage, grap
 		if params.UserID == "" || params.FromEmail == "" {
 			return "Erreur: user_id et from_email requis"
 		}
-		result, err = graphService.Get("/users/" + params.UserID + "/messages?$filter=(from/emailAddress/address) eq '" + params.FromEmail + "'&$top=20")
+		// Encoder l'email pour éviter les problèmes de caractères spéciaux
+		encodedEmail := url.QueryEscape(params.FromEmail)
+		result, err = graphService.Get("/users/" + params.UserID + "/messages?$filter=from/emailAddress/address eq '" + encodedEmail + "'&$top=20")
 
 	case "forward_email":
 		var params struct {

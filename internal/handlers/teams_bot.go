@@ -156,8 +156,6 @@ func (h *TeamsBotHandler) verifyHMAC(authHeader string, body []byte) bool {
 }
 
 func (h *TeamsBotHandler) cleanMention(text string) string {
-	// Teams ajoute <at>BotName</at> au début du message
-	// Format: "<at>NEO</at> message"
 	if idx := strings.Index(text, "</at>"); idx != -1 {
 		text = strings.TrimSpace(text[idx+5:])
 	}
