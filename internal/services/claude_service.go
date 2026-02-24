@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -368,7 +369,9 @@ func (s *ClaudeService) executeTool(toolName string, input json.RawMessage, grap
 				{"emailAddress": map[string]string{"address": params.ToEmail}},
 			},
 		}
-		result, err = graphService.Post("/users/"+params.UserID+"/messages/"+params.MessageID+"/forward", body)
+		// Encoder le message_id pour éviter les problèmes avec les caractères spéciaux
+		encodedMessageID := url.PathEscape(params.MessageID)
+		result, err = graphService.Post("/users/"+params.UserID+"/messages/"+encodedMessageID+"/forward", body)
 		if err == nil {
 			return "Email transféré avec succès"
 		}
