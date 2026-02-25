@@ -9,7 +9,7 @@ import (
 	"net/http"
 )
 
-const geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent"
+const geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
 type GeminiService struct {
 	apiKey            string
@@ -31,8 +31,13 @@ type GeminiSystemInstruc struct {
 }
 
 type GeminiGenerationConfig struct {
-	MaxOutputTokens int     `json:"maxOutputTokens,omitempty"`
-	Temperature     float64 `json:"temperature,omitempty"`
+	MaxOutputTokens int             `json:"maxOutputTokens,omitempty"`
+	Temperature     float64         `json:"temperature,omitempty"`
+	ThinkingConfig  *ThinkingConfig `json:"thinkingConfig,omitempty"`
+}
+
+type ThinkingConfig struct {
+	ThinkingBudget int `json:"thinkingBudget"`
 }
 
 type GeminiContent struct {
@@ -154,6 +159,9 @@ func (s *GeminiService) sendWithTools(contents []GeminiContent, systemContext st
 			GenerationConfig: &GeminiGenerationConfig{
 				MaxOutputTokens: 4096,
 				Temperature:     0.7,
+				ThinkingConfig: &ThinkingConfig{
+					ThinkingBudget: 0,
+				},
 			},
 		}
 
