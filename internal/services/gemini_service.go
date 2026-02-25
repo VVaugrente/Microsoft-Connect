@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 )
 
 const geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
@@ -47,6 +48,7 @@ type GeminiContent struct {
 
 type GeminiPart struct {
 	Text             string              `json:"text,omitempty"`
+	Thought          bool                `json:"thought,omitempty"`
 	FunctionCall     *GeminiFunctionCall `json:"functionCall,omitempty"`
 	FunctionResponse *GeminiFunctionResp `json:"functionResponse,omitempty"`
 }
@@ -205,65 +207,63 @@ func (s *GeminiService) sendWithTools(contents []GeminiContent, systemContext st
 
 		candidate := result.Candidates[0]
 
-		switch candidate.FinishReason {
-		case "STOP":
-			// Réponse texte finale
-			for _, part := range candidate.Content.Parts {
-				if part.Text != "" {
-					return part.Text, nil
-				}
-			}
-			log.Printf("STOP response with no text, retrying...")
-			contents = append(contents, GeminiContent{
-				Role:  "user",
-				Parts: []GeminiPart{{Text: "Génère une réponse textuelle s'il te plaît."}},
-			})
-			continue
+		// Séparer les parts: thoughts, function calls, texte
+		var textParts []string
+		var functionCalls []*GeminiFunctionCall
 
-		case "":
-			// Gemini retourne "" pour les function calls
-			fallthrough
-		case "FUNCTION_CALL":
-			// Ajouter la réponse du modèle à l'historique de la conversation
+		for _, part := range candidate.Content.Parts {
+			if part.Thought {
+				continue // Ignorer les pensées internes
+			}
+			if part.FunctionCall != nil {
+				functionCalls = append(functionCalls, part.FunctionCall)
+			}
+			if part.Text != "" {
+				textParts = append(textParts, part.Text)
+			}
+		}
+
+		// Si on a des function calls, les exécuter
+		if len(functionCalls) > 0 {
 			contents = append(contents, candidate.Content)
 
-			// Exécuter tous les function calls en parallèle
 			funcResponses := []GeminiPart{}
-			for _, part := range candidate.Content.Parts {
-				if part.FunctionCall != nil {
-					fc := part.FunctionCall
-					log.Printf("=== GEMINI FUNCTION CALL: %s ===", fc.Name)
+			for _, fc := range functionCalls {
+				log.Printf("=== GEMINI FUNCTION CALL: %s ===", fc.Name)
+				inputJSON, _ := json.Marshal(fc.Args)
+				toolResult := executor.Execute(fc.Name, inputJSON, graphService)
+				log.Printf("=== TOOL RESULT: %s ===", toolResult)
 
-					inputJSON, _ := json.Marshal(fc.Args)
-					toolResult := executor.Execute(fc.Name, inputJSON, graphService)
-
-					log.Printf("=== TOOL RESULT: %s ===", toolResult)
-
-					funcResponses = append(funcResponses, GeminiPart{
-						FunctionResponse: &GeminiFunctionResp{
-							Name:     fc.Name,
-							Response: map[string]any{"result": toolResult},
-						},
-					})
-				}
+				funcResponses = append(funcResponses, GeminiPart{
+					FunctionResponse: &GeminiFunctionResp{
+						Name:     fc.Name,
+						Response: map[string]any{"result": toolResult},
+					},
+				})
 			}
 
-			if len(funcResponses) == 0 {
-				return "", fmt.Errorf("no function call found in response")
-			}
-
-			// Ajouter les résultats des tools comme message "user"
 			contents = append(contents, GeminiContent{
 				Role:  "user",
 				Parts: funcResponses,
 			})
+			continue
+		}
 
+		// Si on a du texte, le retourner
+		if len(textParts) > 0 {
+			return strings.Join(textParts, "\n"), nil
+		}
+
+		// STOP sans texte ni function call
+		switch candidate.FinishReason {
+		case "STOP":
+			return "Je n'ai pas pu générer de réponse.", nil
 		case "MAX_TOKENS":
 			return "", fmt.Errorf("response truncated: max tokens reached")
-
 		case "SAFETY":
 			return "Désolé, je ne peux pas répondre à cette demande.", nil
-
+		case "MALFORMED_FUNCTION_CALL":
+			return "Je n'ai pas compris votre demande, pouvez-vous reformuler ?", nil
 		default:
 			return "", fmt.Errorf("unexpected finish reason: %s", candidate.FinishReason)
 		}
