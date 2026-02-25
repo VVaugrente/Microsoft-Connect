@@ -12,10 +12,10 @@ type Config struct {
 	ClientSecret string
 	TenantID     string
 	Port         string
+	GeminiAPIKey string
 }
 
 func Load() *Config {
-	// Load .env file
 	if err := godotenv.Load(); err != nil {
 		log.Println("Warning: .env file not found")
 	}
@@ -24,7 +24,8 @@ func Load() *Config {
 		ClientID:     getEnv("CLIENT_ID", ""),
 		ClientSecret: getEnv("CLIENT_SECRET", ""),
 		TenantID:     getEnv("TENANT_ID", ""),
-		Port:         getEnv("PORT", "8080"),
+		Port:         getEnv("PORT", "10000"),
+		GeminiAPIKey: getEnv("GEMINI_API_KEY", ""),
 	}
 }
 

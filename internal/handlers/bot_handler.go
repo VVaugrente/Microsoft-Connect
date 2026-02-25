@@ -19,7 +19,7 @@ import (
 )
 
 type BotHandler struct {
-	claudeService *services.ClaudeService
+	geminiService *services.GeminiService
 	graphService  *services.GraphService
 	appID         string
 	appPassword   string
@@ -28,10 +28,10 @@ type BotHandler struct {
 	tokenMu       sync.RWMutex
 }
 
-func NewBotHandler(cs *services.ClaudeService, gs *services.GraphService) *BotHandler {
+func NewBotHandler(gs *services.GeminiService, graphService *services.GraphService) *BotHandler {
 	return &BotHandler{
-		claudeService: cs,
-		graphService:  gs,
+		geminiService: gs,
+		graphService:  graphService,
 		appID:         os.Getenv("MICROSOFT_APP_ID"),
 		appPassword:   os.Getenv("MICROSOFT_APP_PASSWORD"),
 	}
@@ -80,16 +80,12 @@ func (h *BotHandler) HandleMessage(c *gin.Context) {
 		return
 	}
 
-	log.Printf("Body: %s", string(body))
-
 	var activity BotActivity
 	if err := json.Unmarshal(body, &activity); err != nil {
 		log.Printf("Error parsing activity: %v", err)
 		c.Status(http.StatusBadRequest)
 		return
 	}
-
-	log.Printf("Activity Type: %s, Text: %s", activity.Type, activity.Text)
 
 	// Répondre 200 OK immédiatement
 	c.Status(http.StatusOK)
@@ -102,8 +98,6 @@ func (h *BotHandler) processActivity(activity *BotActivity) {
 	switch activity.Type {
 	case "message":
 		h.handleMessageActivity(activity)
-	case "conversationUpdate":
-		log.Printf("Conversation update received")
 	default:
 		log.Printf("Unknown activity type: %s", activity.Type)
 	}
@@ -126,7 +120,7 @@ func (h *BotHandler) handleMessageActivity(activity *BotActivity) {
 		log.Printf("User AAD ID: %s", userAADID)
 	}
 
-	// Récupérer l'email de l'utilisateur pour l'envoi d'emails
+	// Récupérer l'email de l'utilisateur
 	if userAADID != "" {
 		userInfo, err := h.graphService.Get("/users/" + userAADID + "?$select=mail,userPrincipalName")
 		if err == nil {
@@ -153,14 +147,11 @@ INSTRUCTIONS POUR LES EMAILS:
 
 Réponds de manière concise en français.`
 
-	log.Printf("Context sent to Claude includes user_id: %s", userAADID)
-
-	// Utiliser l'ID de conversation pour le contexte
 	conversationID := activity.Conversation.ID
 
-	response, err := h.claudeService.SendMessageWithContext(cleanedText, context, conversationID, h.graphService)
+	response, err := h.geminiService.SendMessageWithContext(cleanedText, context, conversationID, h.graphService)
 	if err != nil {
-		log.Printf("Claude error: %v", err)
+		log.Printf("Gemini error: %v", err)
 		response = "Désolé, une erreur s'est produite."
 	}
 
@@ -185,7 +176,6 @@ func (h *BotHandler) sendReply(activity *BotActivity, text string) {
 
 	jsonBody, _ := json.Marshal(replyActivity)
 
-	// URL pour répondre
 	replyURL := fmt.Sprintf("%sv3/conversations/%s/activities/%s",
 		activity.ServiceURL,
 		activity.Conversation.ID,
@@ -229,9 +219,6 @@ func (h *BotHandler) getBotToken() (string, error) {
 
 	log.Printf("=== TOKEN REQUEST ===")
 	log.Printf("URL: %s", tokenURL)
-	log.Printf("AppID: [%s]", h.appID)
-	log.Printf("AppPassword length: %d", len(h.appPassword))
-	log.Printf("TenantID: [%s]", tenantID)
 
 	resp, err := http.Post(
 		tokenURL,
@@ -239,21 +226,16 @@ func (h *BotHandler) getBotToken() (string, error) {
 		strings.NewReader(data.Encode()),
 	)
 	if err != nil {
-		log.Printf("Token HTTP error: %v", err)
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		log.Printf("Error reading token response: %v", err)
 		return "", err
 	}
 
-	log.Printf("=== TOKEN RESPONSE ===")
-	log.Printf("Status: %d", resp.StatusCode)
-	log.Printf("Body length: %d", len(body))
-	log.Printf("Body: %s", string(body))
+	log.Printf("=== TOKEN RESPONSE Status: %d ===", resp.StatusCode)
 
 	if len(body) == 0 {
 		return "", fmt.Errorf("empty token response")
@@ -267,12 +249,10 @@ func (h *BotHandler) getBotToken() (string, error) {
 	}
 
 	if err := json.Unmarshal(body, &tokenResp); err != nil {
-		log.Printf("JSON unmarshal error: %v", err)
 		return "", fmt.Errorf("failed to parse token response: %w", err)
 	}
 
 	if tokenResp.Error != "" {
-		log.Printf("Token error: %s - %s", tokenResp.Error, tokenResp.ErrorDesc)
 		return "", fmt.Errorf("token error: %s - %s", tokenResp.Error, tokenResp.ErrorDesc)
 	}
 
@@ -283,8 +263,7 @@ func (h *BotHandler) getBotToken() (string, error) {
 	h.botToken = tokenResp.AccessToken
 	h.tokenExpiry = time.Now().Add(time.Duration(tokenResp.ExpiresIn-60) * time.Second)
 
-	log.Printf("Token obtained successfully, expires in %d seconds", tokenResp.ExpiresIn)
-
+	log.Printf("Bot token obtained, expires in %d seconds", tokenResp.ExpiresIn)
 	return h.botToken, nil
 }
 

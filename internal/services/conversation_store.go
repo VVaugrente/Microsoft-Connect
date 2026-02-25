@@ -30,7 +30,6 @@ func NewConversationStore() *ConversationStore {
 	return store
 }
 
-// ✅ AJOUTER MÉTHODE DE STOP
 func (s *ConversationStore) Stop() {
 	close(s.stopChan)
 }
@@ -75,7 +74,7 @@ func (s *ConversationStore) cleanup() {
 				}
 			}
 			s.mu.Unlock()
-		case <-s.stopChan: // ✅ AJOUTER
+		case <-s.stopChan:
 			return
 		}
 	}

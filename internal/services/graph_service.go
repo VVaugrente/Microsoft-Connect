@@ -26,6 +26,8 @@ func NewGraphService(authService *AuthService) *GraphService {
 	}
 }
 
+// Method générique pour les requêtes Graph API
+
 func (s *GraphService) Get(endpoint string) (map[string]any, error) {
 	return s.request("GET", graphBaseURL+endpoint, nil)
 }
@@ -64,7 +66,6 @@ func (s *GraphService) request(method, url string, body map[string]any) (map[str
 			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}
 		reqBody = bytes.NewBuffer(jsonBody)
-		log.Printf("Request body: %s", string(jsonBody))
 	}
 
 	req, err := http.NewRequest(method, url, reqBody)
@@ -86,13 +87,13 @@ func (s *GraphService) request(method, url string, body map[string]any) (map[str
 	log.Printf("Status: %d", resp.StatusCode)
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
-	log.Printf("Response body: %s", string(bodyBytes))
+
 
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
-	// Gérer les réponses sans contenu (204 No Content et 202 Accepted)
+	// Gérer les réponses sans contenu
 	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusAccepted {
 		return nil, nil
 	}

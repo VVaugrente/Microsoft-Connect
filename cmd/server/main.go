@@ -43,9 +43,9 @@ func main() {
 	if port == "" {
 		port = "10000"
 	}
-	log.Printf("🚀 Starting NEO Bot on port %s", port)
+	log.Printf("🚀 Starting NEO Bot (Gemini) on port %s", port)
 
-	//Self-ping ( RENDER )
+	// Self-ping pour Render
 	renderURL := os.Getenv("RENDER_EXTERNAL_URL")
 	if renderURL != "" {
 		log.Printf("☁️ Render detected, starting self-ping to %s", renderURL)
@@ -55,10 +55,10 @@ func main() {
 	// ===== Services =====
 	authService := services.NewAuthService(cfg)
 	graphService := services.NewGraphService(authService)
-	claudeService := services.NewClaudeService(os.Getenv("CLAUDE_API_KEY"))
+	geminiService := services.NewGeminiService(cfg.GeminiAPIKey)
 
 	// ===== Handler =====
-	botHandler := handlers.NewBotHandler(claudeService, graphService)
+	botHandler := handlers.NewBotHandler(geminiService, graphService)
 
 	// ===== Routes =====
 	r := gin.Default()
@@ -68,6 +68,7 @@ func main() {
 		c.JSON(200, gin.H{
 			"status":  "ok",
 			"service": "NEO - Microsoft Teams Bot",
+			"model":   "gemini-2.0-flash",
 			"version": "2.0",
 		})
 	})
@@ -77,12 +78,11 @@ func main() {
 		c.JSON(200, gin.H{"status": "healthy"})
 	})
 
-	// Bot Framework endpoint 
+	// Bot Framework endpoint
 	r.POST("/api/messages", botHandler.HandleMessage)
 
 	addr := "0.0.0.0:" + port
 	log.Printf("NEO Bot ready on %s", addr)
-	log.Printf("Bot endpoint: POST %s/api/messages", addr)
 
 	if err := r.Run(addr); err != nil {
 		log.Fatal("❌ Server failed:", err)

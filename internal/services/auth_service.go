@@ -57,7 +57,7 @@ func (s *AuthService) refreshToken() (string, error) {
 	data := url.Values{}
 	data.Set("client_id", s.config.ClientID)
 	data.Set("client_secret", s.config.ClientSecret)
-	data.Set("scope", "https://graph.microsoft.com/.default") // <-- IMPORTANT: Graph scope
+	data.Set("scope", "https://graph.microsoft.com/.default")
 	data.Set("grant_type", "client_credentials")
 
 	log.Printf("=== GRAPH TOKEN REQUEST ===")
