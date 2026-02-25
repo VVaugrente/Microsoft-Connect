@@ -68,7 +68,6 @@ func main() {
 		c.JSON(200, gin.H{
 			"status":  "ok",
 			"service": "NEO - Microsoft Teams Bot",
-			"model":   "gemini-2.0-flash",
 			"version": "2.0",
 		})
 	})

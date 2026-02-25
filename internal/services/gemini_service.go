@@ -205,7 +205,12 @@ func (s *GeminiService) sendWithTools(contents []GeminiContent, systemContext st
 					return part.Text, nil
 				}
 			}
-			return "", fmt.Errorf("no text in STOP response")
+			log.Printf("STOP response with no text, retrying...")
+			contents = append(contents, GeminiContent{
+				Role:  "user",
+				Parts: []GeminiPart{{Text: "Génère une réponse textuelle s'il te plaît."}},
+			})
+			continue
 
 		case "":
 			// Gemini retourne "" pour les function calls
