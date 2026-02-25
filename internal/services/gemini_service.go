@@ -9,7 +9,7 @@ import (
 	"net/http"
 )
 
-const geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-native-audio-preview-12-2025"
+const geminiBaseURL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
 type GeminiService struct {
 	apiKey            string
@@ -68,7 +68,7 @@ type GeminiResponse struct {
 
 type GeminiCandidate struct {
 	Content      GeminiContent `json:"content"`
-	FinishReason string        `json:"finishReason"` // "STOP", "MAX_TOKENS", "SAFETY"
+	FinishReason string        `json:"finishReason"`
 	Index        int           `json:"index"`
 }
 
