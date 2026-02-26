@@ -112,7 +112,10 @@ func (h *BotHandler) handleMessageActivity(activity *BotActivity) {
 
 	cleanedText := h.cleanMention(activity.Text)
 
-	// Détecter commandes vocales
+	if isCreateAndJoinCommand(cleanedText) {
+		h.handleCreateAndJoinRequest(activity)
+		return
+	}
 	if isJoinVoiceCommand(cleanedText) {
 		h.handleVoiceJoinRequest(activity, cleanedText)
 		return
@@ -139,6 +142,55 @@ func (h *BotHandler) handleMessageActivity(activity *BotActivity) {
 	}
 
 	h.sendReply(activity, response)
+}
+
+func isCreateAndJoinCommand(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	return lower == "appel" ||
+		lower == "vocal" ||
+		lower == "démarre un appel" ||
+		lower == "start call" ||
+		lower == "rejoins"
+}
+
+func (h *BotHandler) handleCreateAndJoinRequest(activity *BotActivity) {
+	h.sendReply(activity, "📅 Création d'une réunion, un instant...")
+
+	userID := ""
+	if activity.From != nil {
+		userID = activity.From.AadObjectId
+	}
+	if userID == "" {
+		h.sendReply(activity, "❌ Impossible d'identifier l'utilisateur.")
+		return
+	}
+
+	now := time.Now().UTC()
+	meetingBody := map[string]any{
+		"startDateTime": now.Format(time.RFC3339),
+		"endDateTime":   now.Add(1 * time.Hour).Format(time.RFC3339),
+		"subject":       "Appel avec NEO",
+	}
+
+	result, err := h.graphService.Post("/users/"+userID+"/onlineMeetings", meetingBody)
+	if err != nil {
+		h.sendReply(activity, fmt.Sprintf("❌ Impossible de créer la réunion: %v", err))
+		return
+	}
+
+	joinURL, _ := result["joinWebUrl"].(string)
+	if joinURL == "" {
+		h.sendReply(activity, "❌ Lien de réunion introuvable.")
+		return
+	}
+
+	_, err = h.audioBridgeService.JoinCall(joinURL, "NEO")
+	if err != nil {
+		h.sendReply(activity, fmt.Sprintf("❌ NEO n'a pas pu rejoindre: %v", err))
+		return
+	}
+
+	h.sendReply(activity, fmt.Sprintf("✅ Réunion créée !\n\n[🎙️ Rejoindre l'appel avec NEO](%s)", joinURL))
 }
 
 func isJoinVoiceCommand(text string) bool {
