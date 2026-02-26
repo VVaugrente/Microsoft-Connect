@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 
 	"microsoft_connector/internal/services"
@@ -53,6 +54,17 @@ func (h *AudioWebSocketHandler) HandleWebSocket(c *gin.Context) {
 	if callID == "" {
 		c.Status(http.StatusBadRequest)
 		return
+	}
+
+	// ✅ Vérifier le token secret partagé entre C# et GO
+	wsSecret := os.Getenv("WS_SECRET")
+	if wsSecret != "" {
+		token := c.GetHeader("X-WS-Token")
+		if token != wsSecret {
+			log.Printf("[AudioWS] Token invalide pour callID: %s", callID)
+			c.Status(http.StatusForbidden)
+			return
+		}
 	}
 
 	log.Printf("[AudioWS] Nouvelle connexion C# pour callID: %s", callID)
