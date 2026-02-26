@@ -19,21 +19,23 @@ import (
 )
 
 type BotHandler struct {
-	geminiService *services.GeminiService
-	graphService  *services.GraphService
-	appID         string
-	appPassword   string
-	botToken      string
-	tokenExpiry   time.Time
-	tokenMu       sync.RWMutex
+	geminiService      *services.GeminiService
+	graphService       *services.GraphService
+	audioBridgeService *services.AudioBridgeService
+	appID              string
+	appPassword        string
+	botToken           string
+	tokenExpiry        time.Time
+	tokenMu            sync.RWMutex
 }
 
-func NewBotHandler(gs *services.GeminiService, graphService *services.GraphService) *BotHandler {
+func NewBotHandler(gs *services.GeminiService, graphService *services.GraphService, audioBridgeService *services.AudioBridgeService) *BotHandler {
 	return &BotHandler{
-		geminiService: gs,
-		graphService:  graphService,
-		appID:         os.Getenv("MICROSOFT_APP_ID"),
-		appPassword:   os.Getenv("MICROSOFT_APP_PASSWORD"),
+		geminiService:      gs,
+		graphService:       graphService,
+		audioBridgeService: audioBridgeService,
+		appID:              os.Getenv("MICROSOFT_APP_ID"),
+		appPassword:        os.Getenv("MICROSOFT_APP_PASSWORD"),
 	}
 }
 
@@ -109,53 +111,91 @@ func (h *BotHandler) handleMessageActivity(activity *BotActivity) {
 	}
 
 	cleanedText := h.cleanMention(activity.Text)
-	log.Printf("Cleaned message: %s", cleanedText)
 
-	userAADID := ""
-	userEmail := ""
-	if activity.From != nil {
-		if activity.From.AadObjectId != "" {
-			userAADID = activity.From.AadObjectId
-		}
-		log.Printf("User AAD ID: %s", userAADID)
+	// Détecter commandes vocales
+	if isJoinVoiceCommand(cleanedText) {
+		h.handleVoiceJoinRequest(activity, cleanedText)
+		return
+	}
+	if isLeaveVoiceCommand(cleanedText) {
+		h.handleVoiceLeaveRequest(activity)
+		return
 	}
 
-	// Récupérer l'email de l'utilisateur
-	if userAADID != "" {
-		userInfo, err := h.graphService.Get("/users/" + userAADID + "?$select=mail,userPrincipalName")
-		if err == nil {
-			if mail, ok := userInfo["mail"].(string); ok && mail != "" {
-				userEmail = mail
-			} else if upn, ok := userInfo["userPrincipalName"].(string); ok {
-				userEmail = upn
-			}
-		}
-		log.Printf("User email: %s", userEmail)
-	}
-
-	context := `Tu es NEO, un assistant Microsoft 365 intégré à Teams.
-
-UTILISATEUR ACTUEL:
-- Nom: ` + activity.From.Name + `
-- ID Azure AD (user_id): ` + userAADID + `
-- Email: ` + userEmail + `
-
-INSTRUCTIONS POUR LES EMAILS:
-- Utilise l'email ci-dessus comme paramètre "from" pour send_email
-- Si l'utilisateur ne précise pas le sujet, demande-le
-- Si l'utilisateur ne précise pas le contenu, demande-le
-
-Réponds de manière concise en français.`
-
+	// ← MANQUAIT : traitement texte normal via Gemini
 	conversationID := activity.Conversation.ID
+	userID := ""
+	if activity.From != nil {
+		userID = activity.From.AadObjectId
+	}
+
+	context := h.buildSystemContext(userID)
 
 	response, err := h.geminiService.SendMessageWithContext(cleanedText, context, conversationID, h.graphService)
 	if err != nil {
-		log.Printf("Gemini error: %v", err)
-		response = "Désolé, une erreur s'est produite."
+		log.Printf("Error calling Gemini: %v", err)
+		h.sendReply(activity, "❌ Erreur lors du traitement de votre message.")
+		return
 	}
 
 	h.sendReply(activity, response)
+}
+
+func isJoinVoiceCommand(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	return strings.Contains(lower, "rejoins la réunion") ||
+		strings.Contains(lower, "rejoins l'appel") ||
+		strings.Contains(lower, "join meeting") ||
+		strings.Contains(lower, "teams.microsoft.com/l/meetup-join/")
+}
+
+func isLeaveVoiceCommand(text string) bool {
+	lower := strings.ToLower(strings.TrimSpace(text))
+	return strings.Contains(lower, "quitte la réunion") ||
+		strings.Contains(lower, "quitte l'appel") ||
+		strings.Contains(lower, "leave meeting")
+}
+
+func (h *BotHandler) handleVoiceJoinRequest(activity *BotActivity, text string) {
+	joinURL := extractMeetingURL(text)
+	if joinURL == "" {
+		h.sendReply(activity, "❌ Partagez le lien Teams de la réunion.")
+		return
+	}
+
+	h.sendReply(activity, "🎙️ Je rejoins la réunion, un instant...")
+
+	resp, err := h.audioBridgeService.JoinCall(joinURL, "NEO")
+	if err != nil {
+		log.Printf("[BotHandler] Erreur JoinCall: %v", err)
+		h.sendReply(activity, fmt.Sprintf("❌ Impossible de rejoindre: %v", err))
+		return
+	}
+
+	h.sendReply(activity, fmt.Sprintf("✅ J'ai rejoint la réunion ! Je vous écoute. (ID: %s)", resp.CallID))
+}
+
+func (h *BotHandler) handleVoiceLeaveRequest(activity *BotActivity) {
+	calls, err := h.audioBridgeService.GetActiveCalls()
+	if err != nil || len(calls) == 0 {
+		h.sendReply(activity, "ℹ️ Je ne suis dans aucune réunion.")
+		return
+	}
+
+	if err := h.audioBridgeService.LeaveCall(calls[0].ThreadID); err != nil {
+		h.sendReply(activity, fmt.Sprintf("❌ Erreur: %v", err))
+		return
+	}
+	h.sendReply(activity, "👋 J'ai quitté la réunion.")
+}
+
+func extractMeetingURL(text string) string {
+	for _, word := range strings.Fields(text) {
+		if strings.Contains(word, "teams.microsoft.com/l/meetup-join/") {
+			return word
+		}
+	}
+	return ""
 }
 
 func (h *BotHandler) sendReply(activity *BotActivity, text string) {
@@ -272,4 +312,12 @@ func (h *BotHandler) cleanMention(text string) string {
 		text = strings.TrimSpace(text[idx+5:])
 	}
 	return text
+}
+
+func (h *BotHandler) buildSystemContext(userID string) string {
+	return fmt.Sprintf(`Tu es NEO, un assistant IA Microsoft 365 intégré dans Teams.
+Tu aides les utilisateurs avec leurs emails, calendrier, réunions et tâches.
+Réponds toujours en français de manière concise et professionnelle.
+Utilise les outils disponibles pour accéder aux données Microsoft 365.
+ID utilisateur courant : %s`, userID)
 }

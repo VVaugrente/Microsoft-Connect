@@ -8,11 +8,12 @@ import (
 )
 
 type Config struct {
-	ClientID     string
-	ClientSecret string
-	TenantID     string
-	Port         string
-	GeminiAPIKey string
+	ClientID       string
+	ClientSecret   string
+	TenantID       string
+	Port           string
+	GeminiAPIKey   string
+	AudioBridgeURL string
 }
 
 func Load() *Config {
@@ -21,11 +22,12 @@ func Load() *Config {
 	}
 
 	return &Config{
-		ClientID:     getEnv("CLIENT_ID", ""),
-		ClientSecret: getEnv("CLIENT_SECRET", ""),
-		TenantID:     getEnv("TENANT_ID", ""),
-		Port:         getEnv("PORT", "10000"),
-		GeminiAPIKey: getEnv("GEMINI_API_KEY", ""),
+		ClientID:       getEnv("CLIENT_ID", ""),
+		ClientSecret:   getEnv("CLIENT_SECRET", ""),
+		TenantID:       getEnv("TENANT_ID", ""),
+		Port:           getEnv("PORT", "10000"),
+		GeminiAPIKey:   getEnv("GEMINI_API_KEY", ""),
+		AudioBridgeURL: getEnv("AUDIO_BRIDGE_URL", "http://localhost:9441"),
 	}
 }
 

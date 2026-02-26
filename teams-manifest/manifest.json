@@ -1,6 +1,6 @@
 {
-  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.16/MicrosoftTeams.schema.json",
-  "manifestVersion": "1.16",
+  "$schema": "https://raw.githubusercontent.com/OfficeDev/microsoft-teams-app-schema/preview/DevPreview/MicrosoftTeams.schema.json",
+  "manifestVersion": "devPreview",
   "version": "1.0.2",
   "id": "31fdb9a2-1c79-4b8c-ae3a-799b41baea1e",
   "packageName": "com.neo.assistant",
@@ -29,7 +29,7 @@
       "scopes": ["personal", "team", "groupChat"],
       "supportsFiles": false,
       "isNotificationOnly": false,
-      "supportsCalling": false,
+      "supportsCalling": true,
       "supportsVideo": false,
       "commandLists": [
         {
@@ -55,7 +55,8 @@
   "permissions": ["identity", "messageTeamMembers"],
   "validDomains": [
     "microsoft-connect.onrender.com",
-    "*.microsoft-connect.onrender.com"
+    "*.microsoft-connect.onrender.com",
+    "*.ngrok-free.app"
   ],
   "webApplicationInfo": {
     "id": "31fdb9a2-1c79-4b8c-ae3a-799b41baea1e",

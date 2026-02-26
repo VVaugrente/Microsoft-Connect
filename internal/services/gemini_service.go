@@ -2,6 +2,7 @@ package services
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -32,9 +33,11 @@ type GeminiSystemInstruc struct {
 }
 
 type GeminiGenerationConfig struct {
-	MaxOutputTokens int             `json:"maxOutputTokens,omitempty"`
-	Temperature     float64         `json:"temperature,omitempty"`
-	ThinkingConfig  *ThinkingConfig `json:"thinkingConfig,omitempty"`
+	MaxOutputTokens    int                 `json:"maxOutputTokens,omitempty"`
+	Temperature        float64             `json:"temperature,omitempty"`
+	ThinkingConfig     *ThinkingConfig     `json:"thinkingConfig,omitempty"`
+	ResponseModalities []string            `json:"responseModalities,omitempty"`
+	SpeechConfig       *GeminiSpeechConfig `json:"speechConfig,omitempty"`
 }
 
 type ThinkingConfig struct {
@@ -42,7 +45,7 @@ type ThinkingConfig struct {
 }
 
 type GeminiContent struct {
-	Role  string       `json:"role,omitempty"` // "user" ou "model"
+	Role  string       `json:"role,omitempty"`
 	Parts []GeminiPart `json:"parts"`
 }
 
@@ -51,6 +54,12 @@ type GeminiPart struct {
 	Thought          bool                `json:"thought,omitempty"`
 	FunctionCall     *GeminiFunctionCall `json:"functionCall,omitempty"`
 	FunctionResponse *GeminiFunctionResp `json:"functionResponse,omitempty"`
+	InlineData       *GeminiInlineData   `json:"inlineData,omitempty"`
+}
+
+type GeminiInlineData struct {
+	MimeType string `json:"mimeType"`
+	Data     string `json:"data"`
 }
 
 type GeminiFunctionCall struct {
@@ -61,6 +70,18 @@ type GeminiFunctionCall struct {
 type GeminiFunctionResp struct {
 	Name     string         `json:"name"`
 	Response map[string]any `json:"response"`
+}
+
+type GeminiSpeechConfig struct {
+	VoiceConfig *GeminiVoiceConfig `json:"voiceConfig,omitempty"`
+}
+
+type GeminiVoiceConfig struct {
+	PrebuiltVoiceConfig *GeminiPrebuiltVoice `json:"prebuiltVoiceConfig,omitempty"`
+}
+
+type GeminiPrebuiltVoice struct {
+	VoiceName string `json:"voiceName"`
 }
 
 // ===== Structures Response =====
@@ -142,6 +163,124 @@ func (s *GeminiService) SendMessageWithContext(userMessage string, context strin
 
 	s.conversationStore.AddMessage(conversationID, "assistant", response)
 	return response, nil
+}
+
+// SendAudioMessage - Envoie de l'audio PCM (base64) à Gemini 2.5 et retourne la réponse audio PCM
+func (s *GeminiService) SendAudioMessage(audioBase64 string, conversationID string, graphService *GraphService) ([]byte, error) {
+
+	history := s.conversationStore.GetHistory(conversationID)
+	contents := []GeminiContent{}
+
+	// Reconstruire l'historique textuel
+	for _, msg := range history {
+		role := "user"
+		if msg.Role == "assistant" {
+			role = "model"
+		}
+		contents = append(contents, GeminiContent{
+			Role:  role,
+			Parts: []GeminiPart{{Text: msg.Content}},
+		})
+	}
+
+	// Ajouter l'audio courant comme message user
+	contents = append(contents, GeminiContent{
+		Role: "user",
+		Parts: []GeminiPart{
+			{
+				InlineData: &GeminiInlineData{
+					MimeType: "audio/pcm;rate=16000",
+					Data:     audioBase64,
+				},
+			},
+		},
+	})
+
+	reqBody := GeminiRequest{
+		Contents: contents,
+		SystemInstruction: &GeminiSystemInstruc{
+			Parts: []GeminiPart{{Text: `Tu es NEO, un assistant vocal Microsoft 365.
+Réponds de manière concise et claire en français.
+Tu es en conversation vocale, évite les longues listes ou tableaux.`}},
+		},
+		Tools: []GeminiTool{{
+			FunctionDeclarations: GetGeminiTools(),
+		}},
+		GenerationConfig: &GeminiGenerationConfig{
+			ResponseModalities: []string{"AUDIO"},
+			SpeechConfig: &GeminiSpeechConfig{
+				VoiceConfig: &GeminiVoiceConfig{
+					PrebuiltVoiceConfig: &GeminiPrebuiltVoice{
+						VoiceName: "Aoede",
+					},
+				},
+			},
+			MaxOutputTokens: 1024,
+			Temperature:     0.7,
+			ThinkingConfig:  &ThinkingConfig{ThinkingBudget: 0},
+		},
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal audio request: %w", err)
+	}
+
+	apiURL := fmt.Sprintf("%s?key=%s", geminiBaseURL, s.apiKey)
+	req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("audio request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("Gemini audio error %d: %s", resp.StatusCode, string(body))
+	}
+
+	var result GeminiResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, fmt.Errorf("failed to parse audio response: %w", err)
+	}
+
+	if result.Error != nil {
+		return nil, fmt.Errorf("Gemini error %d: %s", result.Error.Code, result.Error.Message)
+	}
+
+	if len(result.Candidates) == 0 {
+		return nil, fmt.Errorf("empty response from Gemini")
+	}
+
+	// Extraire l'audio de la réponse
+	for _, part := range result.Candidates[0].Content.Parts {
+		if part.InlineData != nil && part.InlineData.Data != "" {
+			audioBytes, err := base64.StdEncoding.DecodeString(part.InlineData.Data)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode audio response: %w", err)
+			}
+			log.Printf("[GeminiAudio] Réponse audio: %d bytes pour conversationID: %s", len(audioBytes), conversationID)
+
+			// Sauvegarder dans l'historique
+			s.conversationStore.AddMessage(conversationID, "assistant", "[audio_response]")
+			return audioBytes, nil
+		}
+	}
+
+	// Gemini a répondu en texte au lieu d'audio → log et retourner nil
+	for _, part := range result.Candidates[0].Content.Parts {
+		if part.Text != "" {
+			log.Printf("[GeminiAudio] Réponse texte inattendue: %s", part.Text)
+			s.conversationStore.AddMessage(conversationID, "assistant", part.Text)
+		}
+	}
+
+	return nil, nil
 }
 
 // ===== Private Methods =====
@@ -257,13 +396,13 @@ func (s *GeminiService) sendWithTools(contents []GeminiContent, systemContext st
 		// STOP sans texte ni function call
 		switch candidate.FinishReason {
 		case "STOP":
-			return "Je n'ai pas pu générer de réponse.", nil
+			return "", fmt.Errorf("Gemini s'est arrêté sans réponse")
 		case "MAX_TOKENS":
-			return "", fmt.Errorf("response truncated: max tokens reached")
+			return strings.Join(textParts, "\n"), nil
 		case "SAFETY":
-			return "Désolé, je ne peux pas répondre à cette demande.", nil
+			return "⚠️ Je ne peux pas répondre à cette demande.", nil
 		case "MALFORMED_FUNCTION_CALL":
-			return "Je n'ai pas compris votre demande, pouvez-vous reformuler ?", nil
+			return "", fmt.Errorf("erreur appel de fonction Gemini")
 		default:
 			return "", fmt.Errorf("unexpected finish reason: %s", candidate.FinishReason)
 		}
