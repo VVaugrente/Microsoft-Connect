@@ -166,19 +166,35 @@ func (h *BotHandler) handleCreateAndJoinRequest(activity *BotActivity) {
 	}
 
 	now := time.Now().UTC()
+
+	// ✅ Utiliser /events au lieu de /onlineMeetings → pas besoin de policy
 	meetingBody := map[string]any{
-		"startDateTime": now.Format(time.RFC3339),
-		"endDateTime":   now.Add(1 * time.Hour).Format(time.RFC3339),
-		"subject":       "Appel avec NEO",
+		"subject": "Appel avec NEO",
+		"start": map[string]string{
+			"dateTime": now.Format(time.RFC3339),
+			"timeZone": "UTC",
+		},
+		"end": map[string]string{
+			"dateTime": now.Add(1 * time.Hour).Format(time.RFC3339),
+			"timeZone": "UTC",
+		},
+		"isOnlineMeeting":       true,
+		"onlineMeetingProvider": "teamsForBusiness",
 	}
 
-	result, err := h.graphService.Post("/users/"+userID+"/onlineMeetings", meetingBody)
+	result, err := h.graphService.Post("/users/"+userID+"/events", meetingBody)
 	if err != nil {
 		h.sendReply(activity, fmt.Sprintf("❌ Impossible de créer la réunion: %v", err))
 		return
 	}
 
-	joinURL, _ := result["joinWebUrl"].(string)
+	// Extraire le lien Teams depuis l'event
+	onlineMeeting, _ := result["onlineMeeting"].(map[string]any)
+	joinURL := ""
+	if onlineMeeting != nil {
+		joinURL, _ = onlineMeeting["joinUrl"].(string)
+	}
+
 	if joinURL == "" {
 		h.sendReply(activity, "❌ Lien de réunion introuvable.")
 		return
@@ -190,7 +206,9 @@ func (h *BotHandler) handleCreateAndJoinRequest(activity *BotActivity) {
 		return
 	}
 
-	h.sendReply(activity, fmt.Sprintf("✅ Réunion créée !\n\n[🎙️ Rejoindre l'appel avec NEO](%s)", joinURL))
+	h.sendReply(activity, fmt.Sprintf(
+		"✅ Réunion créée !\n\n[🎙️ Rejoindre l'appel avec NEO](%s)", joinURL,
+	))
 }
 
 func isJoinVoiceCommand(text string) bool {
