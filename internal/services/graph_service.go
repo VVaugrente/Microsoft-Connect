@@ -49,6 +49,10 @@ func (s *GraphService) Delete(endpoint string) error {
 	return err
 }
 
+func (s *GraphService) Patch(endpoint string, body map[string]any) (map[string]any, error) {
+	return s.request("PATCH", graphBaseURL+endpoint, body)
+}
+
 func (s *GraphService) request(method, url string, body map[string]any) (map[string]any, error) {
 	token, err := s.authService.GetAccessToken()
 	if err != nil {
@@ -87,7 +91,6 @@ func (s *GraphService) request(method, url string, body map[string]any) (map[str
 	log.Printf("Status: %d", resp.StatusCode)
 
 	bodyBytes, _ := io.ReadAll(resp.Body)
-
 
 	if resp.StatusCode >= 400 {
 		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(bodyBytes))

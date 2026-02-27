@@ -188,11 +188,13 @@ func (h *BotHandler) handleCreateAndJoinRequest(activity *BotActivity) {
 		return
 	}
 
-	// Extraire le lien Teams depuis l'event
+	// Extraire le lien Teams et l'ID de la réunion en ligne
 	onlineMeeting, _ := result["onlineMeeting"].(map[string]any)
 	joinURL := ""
+	onlineMeetingID := ""
 	if onlineMeeting != nil {
 		joinURL, _ = onlineMeeting["joinUrl"].(string)
+		onlineMeetingID, _ = onlineMeeting["id"].(string)
 	}
 
 	if joinURL == "" {
@@ -200,17 +202,32 @@ func (h *BotHandler) handleCreateAndJoinRequest(activity *BotActivity) {
 		return
 	}
 
-	// ✅ Envoyer le lien EN PREMIER pour que l'utilisateur rejoigne avant le bot
+	// ✅ Configurer le lobby pour que tout le monde bypass
+	if onlineMeetingID != "" {
+		lobbyBody := map[string]any{
+			"lobbyBypassSettings": map[string]any{
+				"scope":                 "everyone", // ← tout le monde bypass le lobby
+				"isDialInBypassEnabled": true,
+			},
+		}
+		_, err = h.graphService.Patch("/users/"+userID+"/onlineMeetings/"+onlineMeetingID, lobbyBody)
+		if err != nil {
+			log.Printf("[AudioBridge] Impossible de configurer le lobby: %v", err)
+			// ← pas bloquant, on continue quand même
+		} else {
+			log.Printf("[AudioBridge] ✅ Lobby configuré: everyone bypass")
+		}
+	}
+
 	h.sendReply(activity, fmt.Sprintf(
 		"✅ Réunion créée ! Rejoins d'abord, NEO arrive dans 10 secondes.\n\n[🎙️ Rejoindre l'appel avec NEO](%s)", joinURL,
 	))
 
-	// ✅ Attendre que l'utilisateur rejoigne
 	time.Sleep(10 * time.Second)
 
-	// ✅ Passer une chaîne vide → bot rejoint avec son identité AAD, pas en guest
 	_, err = h.audioBridgeService.JoinCall(joinURL, "NEO")
 	if err != nil {
+		log.Printf("[AudioBrigde] Erreur JoinCall: %v", err)
 		h.sendReply(activity, fmt.Sprintf("❌ NEO n'a pas pu rejoindre: %v", err))
 		return
 	}
