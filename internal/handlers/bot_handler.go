@@ -167,56 +167,38 @@ func (h *BotHandler) handleCreateAndJoinRequest(activity *BotActivity) {
 
 	now := time.Now().UTC()
 
-	// ✅ Utiliser /events au lieu de /onlineMeetings → pas besoin de policy
+	// ✅ Utiliser /onlineMeetings directement (pas /events)
+	// → donne accès à l'ID de réunion online pour le lobby bypass
 	meetingBody := map[string]any{
-		"subject": "Appel avec NEO",
-		"start": map[string]string{
-			"dateTime": now.Format(time.RFC3339),
-			"timeZone": "UTC",
+		"subject":       "Appel avec NEO",
+		"startDateTime": now.Format(time.RFC3339),
+		"endDateTime":   now.Add(1 * time.Hour).Format(time.RFC3339),
+		// ✅ Lobby bypass directement à la création
+		"lobbyBypassSettings": map[string]any{
+			"scope":                 "everyone",
+			"isDialInBypassEnabled": true,
 		},
-		"end": map[string]string{
-			"dateTime": now.Add(1 * time.Hour).Format(time.RFC3339),
-			"timeZone": "UTC",
-		},
-		"isOnlineMeeting":       true,
-		"onlineMeetingProvider": "teamsForBusiness",
+		"allowedPresenters": "everyone",
 	}
 
-	result, err := h.graphService.Post("/users/"+userID+"/events", meetingBody)
+	result, err := h.graphService.Post("/users/"+userID+"/onlineMeetings", meetingBody)
 	if err != nil {
 		h.sendReply(activity, fmt.Sprintf("❌ Impossible de créer la réunion: %v", err))
 		return
 	}
 
-	// Extraire le lien Teams et l'ID de la réunion en ligne
-	onlineMeeting, _ := result["onlineMeeting"].(map[string]any)
-	joinURL := ""
-	onlineMeetingID := ""
-	if onlineMeeting != nil {
-		joinURL, _ = onlineMeeting["joinUrl"].(string)
-		onlineMeetingID, _ = onlineMeeting["id"].(string)
-	}
-
+	joinURL, _ := result["joinWebUrl"].(string)
 	if joinURL == "" {
-		h.sendReply(activity, "❌ Lien de réunion introuvable.")
+		// Fallback: certaines versions retournent joinUrl
+		joinURL, _ = result["joinUrl"].(string)
+	}
+	if joinURL == "" {
+		h.sendReply(activity, fmt.Sprintf("❌ Lien de réunion introuvable. Réponse: %v", result))
 		return
 	}
 
-	// ✅ Configurer le lobby bypass AVANT que NEO rejoigne
-	if onlineMeetingID != "" {
-		lobbyBody := map[string]any{
-			"lobbyBypassSettings": map[string]any{
-				"scope":                 "everyone",
-				"isDialInBypassEnabled": true,
-			},
-		}
-		_, err = h.graphService.Patch("/users/"+userID+"/onlineMeetings/"+onlineMeetingID, lobbyBody)
-		if err != nil {
-			log.Printf("[AudioBridge] ⚠️ Lobby bypass échoué: %v", err)
-		} else {
-			log.Printf("[AudioBridge] ✅ Lobby bypass configuré")
-		}
-	}
+	onlineMeetingID, _ := result["id"].(string)
+	log.Printf("[AudioBridge] ✅ Réunion créée. ID: %s, joinURL: %s", onlineMeetingID, joinURL)
 
 	h.sendReply(activity, fmt.Sprintf(
 		"✅ Réunion créée ! Rejoins d'abord, NEO arrive dans 10 secondes.\n\n[🎙️ Rejoindre l'appel avec NEO](%s)", joinURL,
@@ -224,8 +206,8 @@ func (h *BotHandler) handleCreateAndJoinRequest(activity *BotActivity) {
 
 	time.Sleep(10 * time.Second)
 
-	// ✅ DisplayName "NEO" = guest → passe par le lobby → mais lobby bypass = everyone → admis automatiquement
-	_, err = h.audioBridgeService.JoinCall(joinURL, "NEO")
+	// ✅ DisplayName VIDE = bot rejoint comme application (pas guest = pas de lobby)
+	_, err = h.audioBridgeService.JoinCall(joinURL, "")
 	if err != nil {
 		log.Printf("[AudioBridge] Erreur JoinCall: %v", err)
 		h.sendReply(activity, fmt.Sprintf("❌ NEO n'a pas pu rejoindre: %v", err))
