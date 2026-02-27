@@ -209,7 +209,7 @@ func (h *BotHandler) handleCreateAndJoinRequest(activity *BotActivity) {
 	time.Sleep(10 * time.Second)
 
 	// ✅ Passer une chaîne vide → bot rejoint avec son identité AAD, pas en guest
-	_, err = h.audioBridgeService.JoinCall(joinURL, "")
+	_, err = h.audioBridgeService.JoinCall(joinURL, "NEO")
 	if err != nil {
 		h.sendReply(activity, fmt.Sprintf("❌ NEO n'a pas pu rejoindre: %v", err))
 		return
