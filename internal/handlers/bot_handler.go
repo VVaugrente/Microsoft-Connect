@@ -202,20 +202,19 @@ func (h *BotHandler) handleCreateAndJoinRequest(activity *BotActivity) {
 		return
 	}
 
-	// ✅ Configurer le lobby pour que tout le monde bypass
+	// ✅ Configurer le lobby bypass AVANT que NEO rejoigne
 	if onlineMeetingID != "" {
 		lobbyBody := map[string]any{
 			"lobbyBypassSettings": map[string]any{
-				"scope":                 "everyone", // ← tout le monde bypass le lobby
+				"scope":                 "everyone",
 				"isDialInBypassEnabled": true,
 			},
 		}
 		_, err = h.graphService.Patch("/users/"+userID+"/onlineMeetings/"+onlineMeetingID, lobbyBody)
 		if err != nil {
-			log.Printf("[AudioBridge] Impossible de configurer le lobby: %v", err)
-			// ← pas bloquant, on continue quand même
+			log.Printf("[AudioBridge] ⚠️ Lobby bypass échoué: %v", err)
 		} else {
-			log.Printf("[AudioBridge] ✅ Lobby configuré: everyone bypass")
+			log.Printf("[AudioBridge] ✅ Lobby bypass configuré")
 		}
 	}
 
@@ -225,9 +224,10 @@ func (h *BotHandler) handleCreateAndJoinRequest(activity *BotActivity) {
 
 	time.Sleep(10 * time.Second)
 
+	// ✅ DisplayName "NEO" = guest → passe par le lobby → mais lobby bypass = everyone → admis automatiquement
 	_, err = h.audioBridgeService.JoinCall(joinURL, "NEO")
 	if err != nil {
-		log.Printf("[AudioBrigde] Erreur JoinCall: %v", err)
+		log.Printf("[AudioBridge] Erreur JoinCall: %v", err)
 		h.sendReply(activity, fmt.Sprintf("❌ NEO n'a pas pu rejoindre: %v", err))
 		return
 	}
