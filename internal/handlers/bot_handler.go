@@ -167,46 +167,47 @@ func (h *BotHandler) handleCreateAndJoinRequest(activity *BotActivity) {
 
 	now := time.Now().UTC()
 
-	// ✅ Utiliser /onlineMeetings directement (pas /events)
-	// → donne accès à l'ID de réunion online pour le lobby bypass
+	// ✅ Option 1 : /events (pas besoin de policy Teams Admin)
 	meetingBody := map[string]any{
-		"subject":       "Appel avec NEO",
-		"startDateTime": now.Format(time.RFC3339),
-		"endDateTime":   now.Add(1 * time.Hour).Format(time.RFC3339),
-		// ✅ Lobby bypass directement à la création
-		"lobbyBypassSettings": map[string]any{
-			"scope":                 "everyone",
-			"isDialInBypassEnabled": true,
+		"subject": "Appel avec NEO",
+		"start": map[string]string{
+			"dateTime": now.Format(time.RFC3339),
+			"timeZone": "UTC",
 		},
-		"allowedPresenters": "everyone",
+		"end": map[string]string{
+			"dateTime": now.Add(1 * time.Hour).Format(time.RFC3339),
+			"timeZone": "UTC",
+		},
+		"isOnlineMeeting":       true,
+		"onlineMeetingProvider": "teamsForBusiness",
 	}
 
-	result, err := h.graphService.Post("/users/"+userID+"/onlineMeetings", meetingBody)
+	result, err := h.graphService.Post("/users/"+userID+"/events", meetingBody)
 	if err != nil {
 		h.sendReply(activity, fmt.Sprintf("❌ Impossible de créer la réunion: %v", err))
 		return
 	}
 
-	joinURL, _ := result["joinWebUrl"].(string)
-	if joinURL == "" {
-		// Fallback: certaines versions retournent joinUrl
-		joinURL, _ = result["joinUrl"].(string)
+	// ✅ L'URL est dans onlineMeeting.joinUrl (pas joinWebUrl)
+	joinURL := ""
+	if onlineMeeting, ok := result["onlineMeeting"].(map[string]any); ok {
+		joinURL, _ = onlineMeeting["joinUrl"].(string)
 	}
+
 	if joinURL == "" {
-		h.sendReply(activity, fmt.Sprintf("❌ Lien de réunion introuvable. Réponse: %v", result))
+		h.sendReply(activity, fmt.Sprintf("❌ joinUrl introuvable. Réponse: %v", result))
 		return
 	}
 
-	onlineMeetingID, _ := result["id"].(string)
-	log.Printf("[AudioBridge] ✅ Réunion créée. ID: %s, joinURL: %s", onlineMeetingID, joinURL)
+	log.Printf("[AudioBridge] ✅ Réunion créée via /events. joinURL: %s", joinURL)
 
 	h.sendReply(activity, fmt.Sprintf(
-		"✅ Réunion créée ! Rejoins d'abord, NEO arrive dans 10 secondes.\n\n[🎙️ Rejoindre l'appel avec NEO](%s)", joinURL,
+		"✅ Réunion créée ! Rejoins d'abord, NEO arrive dans 15 secondes.\n\n[🎙️ Rejoindre l'appel avec NEO](%s)", joinURL,
 	))
 
-	time.Sleep(10 * time.Second)
+	time.Sleep(15 * time.Second)
 
-	// ✅ DisplayName VIDE = bot rejoint comme application (pas guest = pas de lobby)
+	// ✅ DisplayName vide = bot rejoint comme application (pas lobby)
 	_, err = h.audioBridgeService.JoinCall(joinURL, "")
 	if err != nil {
 		log.Printf("[AudioBridge] Erreur JoinCall: %v", err)
