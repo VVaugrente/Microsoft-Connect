@@ -200,15 +200,21 @@ func (h *BotHandler) handleCreateAndJoinRequest(activity *BotActivity) {
 		return
 	}
 
+	// ✅ Envoyer le lien EN PREMIER pour que l'utilisateur rejoigne avant le bot
+	h.sendReply(activity, fmt.Sprintf(
+		"✅ Réunion créée ! Rejoins d'abord, NEO arrive dans 10 secondes.\n\n[🎙️ Rejoindre l'appel avec NEO](%s)", joinURL,
+	))
+
+	// ✅ Attendre que l'utilisateur rejoigne
+	time.Sleep(10 * time.Second)
+
 	_, err = h.audioBridgeService.JoinCall(joinURL, "NEO")
 	if err != nil {
 		h.sendReply(activity, fmt.Sprintf("❌ NEO n'a pas pu rejoindre: %v", err))
 		return
 	}
 
-	h.sendReply(activity, fmt.Sprintf(
-		"✅ Réunion créée !\n\n[🎙️ Rejoindre l'appel avec NEO](%s)", joinURL,
-	))
+	h.sendReply(activity, "🎙️ NEO a rejoint la réunion !")
 }
 
 func isJoinVoiceCommand(text string) bool {
